@@ -14,7 +14,6 @@ def parse_slovene_date_from_header(date_str_full):
     if not date_str_full or not isinstance(date_str_full, str):
         return None
     try:
-        # Extract the DD.MM.YYYY part
         date_part_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', date_str_full)
         if date_part_match:
             date_part = date_part_match.group(1)
