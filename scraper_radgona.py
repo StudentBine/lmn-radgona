@@ -24,10 +24,6 @@ def parse_slovene_date_from_header(date_str_full):
 
 
 def extract_round_options_and_current(soup, current_url):
-    """
-    Extracts round names, their URLs, and identifies the currently selected round
-    from the page's dropdown.
-    """
     round_options = []
     selected_round_info = {'name': "N/A", 'url': current_url}
 
