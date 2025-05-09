@@ -1,0 +1,238 @@
+:root {
+    --primary-color: #003366;
+    --secondary-color: #0d6efd;
+    --accent-color: #198754;
+    --text-color: #333;
+    --light-bg: #f8f9fa;
+    --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+body {
+    background-color: var(--light-bg);
+    font-family: 'Roboto', sans-serif;
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+.header-banner {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #004080 100%);
+    color: white;
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+    box-shadow: var(--card-shadow);
+}
+
+.header-banner h1 {
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 0;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.page-subtitle {
+    border-bottom: 3px solid var(--secondary-color);
+    padding-bottom: 0.75rem;
+    margin-bottom: 2rem;
+    font-weight: 500;
+    color: var(--primary-color);
+    position: relative;
+}
+
+.page-subtitle:after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    width: 100px;
+    height: 3px;
+    background: var(--accent-color);
+}
+
+.date-header {
+    background: linear-gradient(to right, var(--secondary-color), #3d8bfd);
+    color: white;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin: 2rem 0 1rem;
+    font-weight: 500;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.date-header.today {
+    background: linear-gradient(to right, var(--accent-color), #20c997);
+}
+
+.date-header.past {
+    background: linear-gradient(to right, #6c757d, #8e9a9d);
+    opacity: 0.9;
+}
+
+.date-header i {
+    margin-right: 10px;
+    font-size: 1.1em;
+}
+
+.match-card {
+    background: white;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.2s ease;
+    overflow: hidden;
+}
+
+.match-card:hover {
+    transform: translateY(-3px);
+}
+
+.match-card.today-match {
+    border-left: 4px solid var(--accent-color);
+}
+
+.match-card.past-match {
+    opacity: 0.85;
+}
+
+.match-time {
+    background-color: rgba(13, 110, 253, 0.1);
+    padding: 0.75rem;
+    text-align: center;
+    font-weight: 500;
+    border-right: 1px solid #eee;
+}
+
+.match-teams {
+    padding: 1rem;
+}
+
+.team {
+    display: flex;
+    align-items: center;
+    margin: 0.5rem 0;
+}
+
+.home-team {
+    justify-content: flex-end;
+    text-align: right;
+}
+
+.away-team {
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.team-name {
+    font-weight: 500;
+    margin: 0 0.75rem;
+}
+
+.score {
+    font-weight: 700;
+    font-size: 1.1em;
+    color: #dc3545;
+    background-color: rgba(220, 53, 69, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    min-width: 80px;
+    text-align: center;
+}
+
+.score.not-played {
+    color: #6c757d;
+    background-color: rgba(108, 117, 125, 0.1);
+    font-style: italic;
+}
+
+.match-venue {
+    padding: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(248, 249, 250, 0.7);
+    border-top: 1px solid #eee;
+    font-size: 0.9em;
+}
+
+.match-venue i {
+    margin-right: 8px;
+    color: var(--secondary-color);
+}
+
+#round_select_url {
+    border: 2px solid var(--secondary-color);
+    border-radius: 8px;
+    font-weight: 500;
+    padding: 0.75rem 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.footer {
+    border-top: 1px solid #dee2e6;
+    padding: 2rem 0 1rem;
+    margin-top: 3rem;
+    font-size: 0.9em;
+    color: #6c757d;
+}
+
+.no-results {
+    background: white;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    box-shadow: var(--card-shadow);
+}
+
+.no-results i {
+    font-size: 2.5rem;
+    color: #6c757d;
+    margin-bottom: 1rem;
+}
+
+/* Add these modifications to your existing CSS */
+
+@media (max-width: 768px) {
+    /* Team name alignment fixes */
+    .match-teams .row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: nowrap;
+    }
+    
+    .team {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        justify-content: center;
+    }
+    
+    .home-team {
+        justify-content: flex-end;
+        padding-right: 5px;
+    }
+    
+    .away-team {
+        justify-content: flex-start;
+        padding-left: 5px;
+    }
+    
+    .team-name {
+        font-size: 0.85em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+        margin: 0;
+    }
+    
+    .score {
+        flex: 0 0 auto;
+        min-width: 60px;
+        padding: 0.3rem 0.5rem;
+        margin: 0 5px;
+    }
+    
+}
