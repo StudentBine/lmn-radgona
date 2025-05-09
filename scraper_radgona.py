@@ -40,14 +40,12 @@ def extract_round_options_and_current(soup, current_url):
                 if option.has_attr('selected'):
                     selected_round_info = opt_data
     
-    # Fallback if 'selected' attribute isn't present but URL matches
     if selected_round_info['name'] == "N/A":
         for r_opt in round_options:
             if r_opt['url'] == current_url:
                 selected_round_info = r_opt
                 break
     
-    # Further fallback: Try to get round name from heading if not from select
     if selected_round_info['name'] == "N/A" or "krog" not in selected_round_info['name']:
         content_heading_tds = soup.find_all('td', class_='contentheading')
         for td in content_heading_tds:
@@ -58,7 +56,7 @@ def extract_round_options_and_current(soup, current_url):
                     selected_round_info['name'] = match.group(1)
                 else:
                     parsed_heading_round = text.replace("Rezultati kroga -", "").split('(')[0].strip()
-                    if "krog" in parsed_heading_round: # Check if it looks like a round name
+                    if "krog" in parsed_heading_round:
                          selected_round_info['name'] = parsed_heading_round
                 break
                 
@@ -82,7 +80,6 @@ def fetch_lmn_radgona_data(url_to_scrape):
         soup = BeautifulSoup(response.content, 'html.parser')
 
         available_rounds, current_round_info_from_select = extract_round_options_and_current(soup, url_to_scrape)
-        # Update current_round_info if the select box provided a better name
         if current_round_info_from_select['name'] != "N/A":
             current_round_info = current_round_info_from_select
 
@@ -123,7 +120,7 @@ def fetch_lmn_radgona_data(url_to_scrape):
                             score_raw = score_span.get_text(separator="").replace('\xa0', ' ').strip()
                             if any(char.isdigit() for char in score_raw) or "preloženo" in score_raw.lower():
                                 score = score_raw
-                            elif "_ - _" in score_raw : # Handle placeholder
+                            elif "_ - _" in score_raw : 
                                 score = "N/P" 
                         elif score_cell_link and score_cell_link.get_text(strip=True) == "-":
                              score = "N/P"
@@ -135,12 +132,11 @@ def fetch_lmn_radgona_data(url_to_scrape):
                         venue_cell = cells[9].find('a')
                         venue = venue_cell.get_text(strip=True) if venue_cell else "N/A"
                         
-                        # Parse the date from the header for this match
                         parsed_date_obj = parse_slovene_date_from_header(current_date_str_from_header)
 
                         match_results_list.append({
-                            'date_str': current_date_str_from_header, # Keep original string for display
-                            'date_obj': parsed_date_obj, # Store date object for logic
+                            'date_str': current_date_str_from_header, 
+                            'date_obj': parsed_date_obj, 
                             'time': match_time,
                             'home_team': home_team,
                             'score': score,
@@ -172,7 +168,7 @@ if __name__ == '__main__':
 
     print(f"\n--- Rounds Available ({len(rounds)}) ---")
     for r_idx, r in enumerate(rounds):
-        if r_idx < 3 or r_idx > len(rounds) - 4 : # Print first 3 and last 3
+        if r_idx < 3 or r_idx > len(rounds) - 4 :
              print(f"{r['name']}: {r['url']}")
         elif r_idx == 3:
             print("...")
@@ -195,10 +191,3 @@ if __name__ == '__main__':
             print(f"{item['date_str']}{date_status} @ {item['time']} [{item['venue']}]: {item['home_team']} {item['score']} {item['away_team']}")
     else:
         print("No match data scraped for the default round.")
-
-    # Test a specific past round
-    # test_past_round_url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a/results/26-liga-a-2023-24/568/0/0/0/0" # 1. krog
-    # print(f"\n--- Testing specific past round: {test_past_round_url} ---")
-    # matches_past, _, current_round_past = fetch_lmn_radgona_data(test_past_round_url)
-    # if matches_past:
-    #      for item in matches_past[:2]: print(item)
