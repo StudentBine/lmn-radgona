@@ -2,25 +2,22 @@ from flask import Flask, render_template, request, redirect, url_for
 from scraper_radgona import fetch_lmn_radgona_data, BASE_URL
 import os
 from datetime import datetime
-from urllib.parse import urljoin # <<< --- ADD THIS IMPORT
+from urllib.parse import urljoin
 
 app = Flask(__name__)
 
-# This URL on the target site usually shows the current/next round and has the full selector
 INITIAL_LOAD_URL = urljoin(BASE_URL, "/index.php/ct-menu-item-7/razpored-liga-a")
 
 @app.route('/', methods=['GET', 'POST'])
 def show_results():
     selected_round_url = None
-    # source_for_rounds_list = INITIAL_LOAD_URL # Not strictly needed here anymore
 
     if request.method == 'POST':
         selected_round_url = request.form.get('round_select_url')
-    else: # GET request
+    else: 
         selected_round_url = request.args.get('round_url')
 
     if not selected_round_url:
-        # This is the initial load or no specific round was requested
         print("Initial load or no round specified, using INITIAL_LOAD_URL.")
         url_to_scrape = INITIAL_LOAD_URL
     else:
@@ -44,14 +41,14 @@ def show_results():
     grouped_data = {}
     if matches:
         for match in matches:
-            date_key = match['date_str'] # Use the original string date for grouping display
+            date_key = match['date_str'] 
             if date_key not in grouped_data:
                 grouped_data[date_key] = []
             grouped_data[date_key].append(match)
     
     page_title_main = "LMN Radgona"
     page_title_round = current_round_details.get('name', "Rezultati")
-    if page_title_round == "N/A" or "krog" not in page_title_round.lower(): # Check if it actually looks like a round name
+    if page_title_round == "N/A" or "krog" not in page_title_round.lower(): 
         page_title_round = "Aktualni rezultati"
 
 
@@ -61,7 +58,7 @@ def show_results():
                            current_selected_url=current_round_details.get('url', url_to_scrape),
                            page_title_main=page_title_main,
                            page_title_round=page_title_round,
-                           source_url_for_data=url_to_scrape, # The URL actual data came from
+                           source_url_for_data=url_to_scrape,
                            today_date=datetime.now().date() 
                            )
 
