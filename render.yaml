@@ -4,7 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: ""
-    startCommand: gunicorn app_radgona:app
+    startCommand: gunicorn app_radgona:app --timeout 60
     envVars:
       - key: FLASK_ENV
         value: production
