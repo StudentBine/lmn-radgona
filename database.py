@@ -90,41 +90,44 @@ def cache_rounds(league_id, rounds_data):
 def get_cached_round_matches(league_id, round_url):
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Assuming round_url is unique enough for a specific round's matches page
+    # Get the minimum last_scraped time for this round_url
     cursor.execute('''
-        SELECT * FROM matches 
-        WHERE league_id = ? AND round_url = ? 
-        ORDER BY date_obj, time
+        SELECT MIN(last_scraped) as oldest_scrape_time 
+        FROM matches 
+        WHERE league_id = ? AND round_url = ?
     ''', (league_id, round_url))
-    rows = cursor.fetchall()
-    conn.close()
-    
-    matches = []
-    if rows:
-        is_stale = False
-        for row_data in rows:
-            match = dict(row_data)
-            if match['last_scraped']:
-                last_scraped_dt = datetime.fromisoformat(match['last_scraped'])
-                if datetime.now() - last_scraped_dt >= CACHE_DURATION_MATCHES:
-                    is_stale = True
-                    break # One stale match makes the whole round stale
-            else: # No timestamp, consider stale
-                is_stale = True
-                break
-            
-            # Convert date_obj back to datetime.date if needed by application logic
-            if match.get('date_obj'):
-                try:
-                    match['date_obj'] = datetime.fromisoformat(match['date_obj']).date()
-                except:
-                    match['date_obj'] = None # Or handle error
-            matches.append(match)
+    staleness_check_row = cursor.fetchone()
 
-        if not is_stale and matches:
-            print(f"Using cached matches for round URL: {round_url}")
-            return matches
-    return None
+    if staleness_check_row and staleness_check_row['oldest_scrape_time']:
+        oldest_scrape_dt = datetime.fromisoformat(staleness_check_row['oldest_scrape_time'])
+        if datetime.now() - oldest_scrape_dt < CACHE_DURATION_MATCHES:
+            # Cache is fresh, retrieve all matches for this round_url
+            cursor.execute('''
+                SELECT * FROM matches 
+                WHERE league_id = ? AND round_url = ? 
+                ORDER BY date_obj, time
+            ''', (league_id, round_url))
+            rows = cursor.fetchall()
+            conn.close()
+            
+            matches = []
+            for row_data in rows:
+                match = dict(row_data)
+                if match.get('date_obj'):
+                    try: match['date_obj'] = datetime.fromisoformat(match['date_obj']).date()
+                    except: match['date_obj'] = None
+                matches.append(match)
+            
+            if matches:
+                print(f"Using {len(matches)} cached (and fresh) matches for round URL: {round_url}")
+                return matches
+        else:
+            print(f"Match cache for {round_url} is STALE (oldest scrape: {oldest_scrape_dt}).")
+    else:
+        print(f"No existing cache entries or scrape times for {round_url}.")
+
+    conn.close()
+    return None # Cache miss or stale
 
 
 def cache_matches(league_id, round_url, matches_data):

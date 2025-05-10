@@ -58,7 +58,8 @@
     </nav>
 
     <div class="container main-content">
-        <h2 class="page-subtitle text-center">{{ page_title_main.split(':')[-1].strip() }} - {{ page_title_section }}</h2> 
+        <h2 class="page-subtitle text-center">{{ page_title_main.split(':')[-1].strip() }} - {{ page_title_section }}</h2> <!-- Changed page_title_round to page_title_section -->
+
         {% if all_rounds %}
         <!-- CORRECTED url_for HERE -->
         <form method="POST" action="{{ url_for('show_league_results', league_id=current_league_id) }}"
