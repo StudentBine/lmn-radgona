@@ -10,26 +10,145 @@
         integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Poppins:wght@400;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        :root {
+            --primary-color: #1a3e72;
+            --secondary-color: #3a86ff;
+            --accent-color: #4cc9f0;
+            --success-color: #38b000;
+            --text-color: #2d3748;
+            --light-bg: #f8fafc;
+            --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --card-hover-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        body {
+            background-color: var(--light-bg);
+            font-family: 'Roboto', sans-serif;
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        h1,
+        h2,
+        h3,
+        .navbar-brand {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #2a5298 100%);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 0.8rem 0;
+        }
+
         .navbar-brand {
             font-weight: 700;
             letter-spacing: -0.5px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
         }
 
-        .table th,
+        .navbar-brand i {
+            margin-right: 10px;
+            font-size: 1.3rem;
+        }
+
+        .container.main-content {
+            margin-top: 2rem;
+            padding-bottom: 3rem;
+        }
+
+        .dropdown-menu {
+            border-radius: 8px;
+            box-shadow: var(--card-hover-shadow);
+            border: none;
+        }
+
+        .dropdown-item {
+            padding: 0.5rem 1.25rem;
+            font-weight: 500;
+        }
+
+        .dropdown-item:hover {
+            background-color: rgba(58, 134, 255, 0.1);
+            color: var(--secondary-color);
+        }
+
+        .nav-link {
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .page-subtitle {
+            border-bottom: 3px solid var(--secondary-color);
+            padding-bottom: 0.75rem;
+            margin-bottom: 2rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            position: relative;
+        }
+
+        .page-subtitle:after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            width: 100px;
+            height: 3px;
+            background: var(--accent-color);
+        }
+
+        .table {
+            --bs-table-bg: transparent;
+            --bs-table-striped-bg: rgba(58, 134, 255, 0.03);
+            --bs-table-hover-bg: rgba(58, 134, 255, 0.08);
+            box-shadow: var(--card-shadow);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .table th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            padding: 1rem;
+            border-bottom-width: 2px;
+        }
+
         .table td {
+            padding: 0.75rem 1rem;
             vertical-align: middle;
+        }
+
+        .table-striped>tbody>tr:nth-child(odd)>* {
+            --bs-table-accent-bg: rgba(58, 134, 255, 0.03);
+        }
+
+        .table-hover>tbody>tr:hover>* {
+            --bs-table-accent-bg: rgba(58, 134, 255, 0.08);
         }
 
         .rank-col {
             width: 5%;
             text-align: center;
+            font-weight: 600;
         }
 
         .team-col {
             width: 35%;
+            font-weight: 500;
         }
 
         .stats-col {
@@ -40,23 +159,70 @@
         .points-col {
             width: 10%;
             text-align: center;
-            font-weight: bold;
+            font-weight: 700;
+            color: var(--primary-color);
         }
 
-        .leaderboard-table tbody tr:nth-child(-n+1) {
-            background-color: #d1e7dd;
+        .leaderboard-table tbody tr:first-child {
+            background-color: rgba(56, 176, 0, 0.1) !important;
+        }
+
+        .leaderboard-table tbody tr:first-child td {
+            font-weight: 600;
+        }
+
+        .leaderboard-table tbody tr:first-child .points-col {
+            color: var(--success-color);
+        }
+
+        .footer {
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 2rem 0;
+            margin-top: 4rem;
+            font-size: 0.9em;
+            color: #6c757d;
+            background-color: white;
+        }
+
+        .no-data {
+            background: white;
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            box-shadow: var(--card-shadow);
+            margin: 3rem 0;
+        }
+
+        .no-data i {
+            font-size: 2.5rem;
+            color: var(--secondary-color);
+            margin-bottom: 1.5rem;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-row {
+            animation: fadeIn 0.5s ease forwards;
         }
     </style>
 </head>
 
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm"
-        style="background-color: var(--primary-color);">
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
-            <!-- CORRECTED url_for HERE -->
-            <a class="navbar-brand"
-                href="{{ url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID if DEFAULT_LEAGUE_ID else leagues.keys()|first) }}">LMN
-                Radgona</a>
+            <a class="navbar-brand" href="{{ url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID if DEFAULT_LEAGUE_ID else leagues.keys()|first) }}">
+                <i class="fas fa-futbol"></i> LMN Radgona
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavLeagues"
                 aria-controls="navbarNavLeagues" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -68,20 +234,20 @@
                         <a class="nav-link dropdown-toggle {% if league_key == current_league_id %}active fw-bold{% endif %}"
                             href="#" id="navbarDropdownMenuLink-{{ league_key }}" role="button"
                             data-bs-toggle="dropdown" aria-expanded="false">
-                            {{ league_info.display_name }}
+                            <i class="fas fa-trophy me-1"></i> {{ league_info.display_name }}
                         </a>
-                        <ul class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink-{{ league_key }}">
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdownMenuLink-{{ league_key }}">
                             <li>
-                                <!-- CORRECTED url_for AND request.endpoint HERE -->
                                 <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_league_results' %}active{% endif %}"
                                     href="{{ url_for('show_league_results', league_id=league_key) }}">
                                     <i class="fas fa-list-ol me-2"></i>Rezultati
                                 </a>
                             </li>
+                            <li><hr class="dropdown-divider"></li>
                             <li>
                                 <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_leaderboard' %}active{% endif %}"
                                     href="{{ url_for('show_leaderboard', league_id=league_key) }}">
-                                    <i class="fas fa-trophy me-2"></i>Lestvica
+                                    <i class="fas fa-medal me-2"></i>Lestvica
                                 </a>
                             </li>
                         </ul>
@@ -92,14 +258,18 @@
         </div>
     </nav>
 
-    <div class="container mt-4">
-        <h2 class="page-subtitle text-center">{{ page_title_main.split(':')[-1].strip() }} - {{ page_title_section }}
-        </h2>
+
+    <div class="container main-content">
+        <div class="text-center mb-5">
+            <h1 class="display-5 fw-bold mb-3" style="color: var(--primary-color);">{{
+                page_title_main.split(':')[-1].strip() }}</h1>
+            <h2 class="text-muted">{{ page_title_section }}</h2>
+        </div>
 
         {% if leaderboard_data %}
         <div class="table-responsive mt-4">
             <table class="table table-striped table-hover leaderboard-table">
-                <thead class="table-light">
+                <thead>
                     <tr>
                         <th scope="col" class="rank-col">#</th>
                         <th scope="col" class="team-col">Ekipa</th>
@@ -115,9 +285,9 @@
                 </thead>
                 <tbody>
                     {% for team_stat in leaderboard_data %}
-                    <tr>
+                    <tr class="animate-row">
                         <td class="rank-col">{{ loop.index }}</td>
-                        <td class="team-col fw-medium">{{ team_stat.name }}</td>
+                        <td class="team-col">{{ team_stat.name }}</td>
                         <td class="stats-col">{{ team_stat.played }}</td>
                         <td class="stats-col">{{ team_stat.won }}</td>
                         <td class="stats-col">{{ team_stat.drawn }}</td>
@@ -132,18 +302,21 @@
             </table>
         </div>
         {% else %}
-        <div class="alert alert-info text-center mt-4" role="alert">
-            <i class="fas fa-info-circle me-2"></i>
-            Lestvica se izračunava ali pa za to ligo še ni odigranih tekem.
+        <div class="no-data">
+            <i class="fas fa-info-circle"></i>
+            <h4 class="fw-bold mb-2">Ni podatkov o lestvici</h4>
+            <p class="mb-0">Lestvica se izračunava ali pa za to ligo še ni odigranih tekem.</p>
         </div>
         {% endif %}
 
-        <footer class="footer text-center">
-            <p>Podatki pridobljeni iz: <a
-                    href="{{ source_url_for_data.split('/index.php')[0] if source_url_for_data else 'https://www.lmn-radgona.si/' }}"
-                    target="_blank" rel="noopener noreferrer">LMN Radgona</a></p>
-            <p>© <span id="current_year"></span> LMN Radgona Rezultati (neuradno). Vse pravice pridržane (razen
-                podatkov, ki so last vira).</p>
+        <footer class="footer mt-5">
+            <div class="container">
+                <p class="mb-2">Podatki pridobljeni iz: <a
+                        href="{{ source_url_for_data.split('/index.php')[0] if source_url_for_data else 'https://www.lmn-radgona.si/' }}"
+                        target="_blank" rel="noopener noreferrer" class="text-decoration-underline">LMN Radgona</a></p>
+                <p class="mb-0 text-muted">© <span id="current_year"></span> LMN Radgona Rezultati (neuradno). Vse
+                    pravice pridržane.</p>
+            </div>
         </footer>
     </div>
 
@@ -152,6 +325,14 @@
         crossorigin="anonymous"></script>
     <script>
         document.getElementById('current_year').textContent = new Date().getFullYear();
+
+        // Animate table rows on load
+        document.addEventListener('DOMContentLoaded', function () {
+            const rows = document.querySelectorAll('.animate-row');
+            rows.forEach(row => {
+                row.style.visibility = 'visible';
+            });
+        });
     </script>
 </body>
 

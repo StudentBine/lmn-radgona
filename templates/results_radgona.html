@@ -10,33 +10,127 @@
         integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Poppins:wght@400;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
+        :root {
+            --primary-color: #1a3e72;
+            --secondary-color: #3a86ff;
+            --accent-color: #4cc9f0;
+            --success-color: #38b000;
+            --text-color: #2d3748;
+            --light-bg: #f8fafc;
+            --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --card-hover-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        body {
+            background-color: var(--light-bg);
+            font-family: 'Roboto', sans-serif;
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        h1,
+        h2,
+        h3,
+        .navbar-brand {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #2a5298 100%);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 0.8rem 0;
+        }
+
         .navbar-brand {
             font-weight: 700;
             letter-spacing: -0.5px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+        }
+
+        .navbar-brand i {
+            margin-right: 10px;
+            font-size: 1.3rem;
         }
 
         .container.main-content {
-            margin-top: 1.5rem;
+            margin-top: 2rem;
+            padding-bottom: 3rem;
         }
 
         .form-select-lg {
             padding-top: .7rem;
             padding-bottom: .7rem;
+            border: 2px solid var(--secondary-color);
+            border-radius: 10px;
+            font-weight: 500;
+        }
+
+        .dropdown-menu {
+            border-radius: 8px;
+            box-shadow: var(--card-hover-shadow);
+            border: none;
+        }
+
+        .dropdown-item {
+            padding: 0.5rem 1.25rem;
+            font-weight: 500;
+        }
+
+        .dropdown-item:hover {
+            background-color: rgba(58, 134, 255, 0.1);
+            color: var(--secondary-color);
+        }
+
+        .nav-link {
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-outline-secondary {
+            border-color: var(--secondary-color);
+            color: var(--secondary-color);
+        }
+
+        .btn-outline-secondary:hover {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        /* Loading animation for cards */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
 
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm"
-        style="background-color: var(--primary-color);">
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
-            <!-- CORRECTED url_for HERE -->
             <a class="navbar-brand"
-                href="{{ url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID if DEFAULT_LEAGUE_ID else leagues.keys()|first) }}">LMN
-                Radgona</a>
+                href="{{ url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID if DEFAULT_LEAGUE_ID else leagues.keys()|first) }}">
+                <i class="fas fa-futbol"></i> LMN Radgona
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavLeagues"
                 aria-controls="navbarNavLeagues" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -48,20 +142,23 @@
                         <a class="nav-link dropdown-toggle {% if league_key == current_league_id %}active fw-bold{% endif %}"
                             href="#" id="navbarDropdownMenuLink-{{ league_key }}" role="button"
                             data-bs-toggle="dropdown" aria-expanded="false">
-                            {{ league_info.display_name }}
+                            <i class="fas fa-trophy me-1"></i> {{ league_info.display_name }}
                         </a>
-                        <ul class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink-{{ league_key }}">
+                        <ul class="dropdown-menu dropdown-menu-end"
+                            aria-labelledby="navbarDropdownMenuLink-{{ league_key }}">
                             <li>
-                                <!-- CORRECTED url_for AND request.endpoint HERE -->
                                 <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_league_results' %}active{% endif %}"
                                     href="{{ url_for('show_league_results', league_id=league_key) }}">
                                     <i class="fas fa-list-ol me-2"></i>Rezultati
                                 </a>
                             </li>
                             <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li>
                                 <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_leaderboard' %}active{% endif %}"
                                     href="{{ url_for('show_leaderboard', league_id=league_key) }}">
-                                    <i class="fas fa-trophy me-2"></i>Lestvica
+                                    <i class="fas fa-medal me-2"></i>Lestvica
                                 </a>
                             </li>
                         </ul>
@@ -73,108 +170,115 @@
     </nav>
 
     <div class="container main-content">
-        <h2 class="page-subtitle text-center">{{ page_title_main.split(':')[-1].strip() }} - {{ page_title_section }}
-        </h2> <!-- Changed page_title_round to page_title_section -->
+        <div class="text-center mb-5">
+            <h1 class="display-5 fw-bold mb-3" style="color: var(--primary-color);">{{
+                page_title_main.split(':')[-1].strip() }}</h1>
+            <h2 class="text-muted">{{ page_title_section }}</h2>
+        </div>
 
         {% if all_rounds %}
-        <!-- CORRECTED url_for HERE -->
         <form method="POST" action="{{ url_for('show_league_results', league_id=current_league_id) }}"
             class="row g-3 align-items-center justify-content-center mb-5">
             <input type="hidden" name="league_id_form_field" value="{{ current_league_id }}">
-            
-            <div class="col-sm-6 col-md-5 col-lg-4">
+
+            <div class="col-sm-8 col-md-6 col-lg-5">
                 <select name="round_select_url" id="round_select_url" class="form-select form-select-lg"
                     onchange="this.form.submit()">
                     {% for round_option in all_rounds %}
-                    <option value="{{ round_option.url }}" {% if round_option.url == current_selected_url %}selected{% endif %}>
+                    <option value="{{ round_option.url }}" {% if round_option.url==current_selected_url %}selected{%
+                        endif %}>
                         {{ round_option.name }}
                     </option>
                     {% endfor %}
                 </select>
             </div>
 
-            <div class="col-auto d-flex flex-wrap gap-2">
-                <!-- Gumb za skoči na trenutni krog -->
+            <div class="col-sm-4 col-md-3 d-flex flex-wrap gap-2 justify-content-center">
                 {% if all_rounds and all_rounds|length > 0 %}
-                    <a href="{{ url_for('show_league_results', league_id=current_league_id) }}" class="btn btn-outline-secondary btn-lg">
-                        <i class="fas fa-bullseye me-1"></i> Trenutni krog
-                    </a>
+                <a href="{{ url_for('show_league_results', league_id=current_league_id) }}"
+                    class="btn btn-outline-secondary btn-lg px-3">
+                    <i class="fas fa-bullseye me-1"></i> Trenutni
+                </a>
                 {% endif %}
-
-                <!-- Gumb za prisilno osvežitev lestvice -->
-                <!-- <a href="{{ url_for('show_leaderboard', league_id=current_league_id) }}?force=true" class="btn btn-outline-primary btn-lg">
-                    <i class="fas fa-sync-alt me-1"></i> Prisili osvežitev lestvice
-                </a> -->
             </div>
         </form>
-
         {% endif %}
 
-        <!-- ... (rest of your results_radgona.html content, ensuring match.score_str is used) ... -->
         {% if grouped_results %}
-        {% for date_str, matches_in_date in grouped_results.items() %}
-        {% set first_match_in_date = matches_in_date[0] %}
-        {% set date_class = '' %}
-        {% set date_icon = 'fa-calendar-alt' %}
-        {% if first_match_in_date.date_obj %}
-        {% if first_match_in_date.date_obj == today_date %}
-        {% set date_class = 'today' %}
-        {% set date_icon = 'fa-calendar-day' %}
-        {% elif first_match_in_date.date_obj < today_date %} {% set date_class='past' %} {% set
-            date_icon='fa-calendar-check' %} {% endif %} {% endif %} <div class="date-header {{ date_class }}">
-            <i class="fas {{ date_icon }} me-2"></i>
-            {{ date_str }}
-    </div>
+        <div class="results-container">
+            {% for date_str, matches_in_date in grouped_results.items() %}
+            {% set first_match_in_date = matches_in_date[0] %}
+            {% set date_class = '' %}
+            {% set date_icon = 'fa-calendar-alt' %}
+            {% if first_match_in_date.date_obj %}
+            {% if first_match_in_date.date_obj == today_date %}
+            {% set date_class = 'today' %}
+            {% set date_icon = 'fa-calendar-day' %}
+            {% elif first_match_in_date.date_obj < today_date %} {% set date_class='past' %} {% set
+                date_icon='fa-calendar-check' %} {% endif %} {% endif %} <div class="date-header {{ date_class }} mb-3">
+                <i class="fas {{ date_icon }} me-2"></i>
+                {{ date_str }}
+        </div>
 
-    <div class="row">
-        {% for match in matches_in_date %}
-        {% set card_class = '' %}
-        {% if match.date_obj %}
-        {% if match.date_obj == today_date %}
-        {% set card_class = 'today-match' %}
-        {% elif match.date_obj < today_date %} {% set card_class='past-match' %} {% endif %} {% endif %} <div
-            class="col-12 mb-3">
-            <div class="match-card {{ card_class }}">
-                <div class="row g-0 align-items-center">
-                    <div class="col-md-2 match-time">
-                        <i class="fas fa-clock me-1 d-md-none"></i>{{ match.time }}
-                    </div>
-                    <div class="col-md-8 match-teams">
-                        <div class="row align-items-center gx-1 gx-sm-2">
-                            <div class="col-5 home-team team">
-                                <span class="team-name">{{ match.home_team }}</span>
+        <div class="row g-3 mb-4">
+            {% for match in matches_in_date %}
+            {% set card_class = '' %}
+            {% if match.date_obj %}
+            {% if match.date_obj == today_date %}
+            {% set card_class = 'today-match' %}
+            {% elif match.date_obj < today_date %} {% set card_class='past-match' %} {% endif %} {% endif %} <div
+                class="col-12">
+                <div class="match-card {{ card_class }} animate__animated">
+                    <div class="row g-0 align-items-center">
+                        <div class="col-md-2 match-time">
+                            <div class="time-container">
+                                <i class="fas fa-clock me-1 d-md-none"></i>
+                                <span>{{ match.time }}</span>
                             </div>
-                            <div
-                                class="col-2 text-center score {% if match.score_str == 'N/P' or match.score_str == '_ - _' %}not-played{% endif %}">
-                                {{ match.score_str }}
+                        </div>
+                        <div class="col-md-8 match-teams">
+                            <div class="row align-items-center gx-1 gx-sm-3">
+                                <div class="col-5 home-team team">
+                                    <span class="team-name">{{ match.home_team }}</span>
+                                </div>
+                                <div
+                                    class="col-2 text-center score {% if match.score_str == 'N/P' or match.score_str == '_ - _' %}not-played{% endif %}">
+                                    {{ match.score_str }}
+                                </div>
+                                <div class="col-5 away-team team">
+                                    <span class="team-name">{{ match.away_team }}</span>
+                                </div>
                             </div>
-                            <div class="col-5 away-team team">
-                                <span class="team-name">{{ match.away_team }}</span>
+                        </div>
+                        <div class="col-md-2 match-venue">
+                            <div class="venue-container">
+                                <i class="fas fa-map-marker-alt me-1"></i>
+                                <span class="venue-text">{{ match.venue }}</span>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-2 match-venue">
-                        <i class="fas fa-map-marker-alt me-1"></i>{{ match.venue }}
-                    </div>
                 </div>
-            </div>
+        </div>
+        {% endfor %}
     </div>
     {% endfor %}
     </div>
-    {% endfor %}
     {% else %}
-    <div class="no-results alert alert-warning">
-        <i class="fas fa-exclamation-circle me-2"></i>
-        <strong>Ni rezultatov!</strong> Za izbrani krog ni najdenih podatkov ali pa je prišlo do napake.
+    <div class="no-results alert alert-warning text-center py-4">
+        <i class="fas fa-exclamation-circle fa-3x mb-3" style="color: #ffc107;"></i>
+        <h4 class="fw-bold mb-2">Ni rezultatov!</h4>
+        <p class="mb-0">Za izbrani krog ni najdenih podatkov ali pa je prišlo do napake.</p>
     </div>
     {% endif %}
 
-    <footer class="footer text-center">
-        <p>Podatki pridobljeni iz: <a
-                href="{{ source_url_for_data.split('/index.php')[0] if source_url_for_data else 'https://www.lmn-radgona.si/' }}"
-                target="_blank" rel="noopener noreferrer">LMN Radgona</a></p>
-        <p>© <span id="current_year"></span> LMN Radgona Rezultati (neuradno). Vse pravice pridržane (razen podatkov, ki
-            so last vira).</p>
+    <footer class="footer mt-5 py-4 text-center">
+        <div class="container">
+            <p class="mb-2">Podatki pridobljeni iz: <a
+                    href="{{ source_url_for_data.split('/index.php')[0] if source_url_for_data else 'https://www.lmn-radgona.si/' }}"
+                    target="_blank" rel="noopener noreferrer" class="text-decoration-underline">LMN Radgona</a></p>
+            <p class="mb-0 text-muted">© <span id="current_year"></span> LMN Radgona Rezultati (neuradno). Vse pravice
+                pridržane.</p>
+        </div>
     </footer>
     </div>
 
@@ -183,25 +287,44 @@
         crossorigin="anonymous"></script>
     <script>
         document.getElementById('current_year').textContent = new Date().getFullYear();
+
         document.addEventListener('DOMContentLoaded', function () {
+            // Animate cards on scroll
             const matchCards = document.querySelectorAll('.match-card');
-            const observer = new IntersectionObserver((entries) => {
+
+            const animateOnScroll = (entries, observer) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
-                        entry.target.style.opacity = '1';
-                        entry.target.style.transform = 'translateY(0)';
+                        entry.target.style.animation = 'fadeInUp 0.6s ease forwards';
                         observer.unobserve(entry.target);
                     }
                 });
-            }, { threshold: 0.1 });
-            matchCards.forEach(card => {
-                card.style.opacity = '0';
-                card.style.transform = 'translateY(20px)';
-                card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-                observer.observe(card);
+            };
+
+            const observer = new IntersectionObserver(animateOnScroll, {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
             });
+
+            matchCards.forEach((card, index) => {
+                card.style.opacity = '0';
+                observer.observe(card);
+
+                // Add slight delay for staggered animation
+                card.style.animationDelay = `${index * 0.05}s`;
+            });
+
+            // Smooth scroll to top when changing rounds
+            const roundSelect = document.getElementById('round_select_url');
+            if (roundSelect) {
+                roundSelect.addEventListener('change', function () {
+                    window.scrollTo({
+                        top: 0,
+                        behavior: 'smooth'
+                    });
+                });
+            }
         });
     </script>
 </body>
-
 </html>
