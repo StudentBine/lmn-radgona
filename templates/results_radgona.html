@@ -4,36 +4,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Title will be more dynamic, e.g., "LMN Radgona: Liga A - 18. krog" -->
-    <title>{{ page_title_main }} - {{ page_title_round }}</title>
+    <title>{{ page_title_main }} - {{ page_title_section }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='results_radgona.css') }}">
-    <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
         integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Inline styles for quick navbar adjustments if needed, or move to results_radgona.css */
-        .navbar-brand {
-            font-weight: 700; /* From your CSS for header h1 */
-            letter-spacing: -0.5px; /* From your CSS for header h1 */
-        }
-        /* Adjust main container margin if navbar replaces old header */
-        .container.main-content {
-            margin-top: 1.5rem;
-        }
+        .navbar-brand { font-weight: 700; letter-spacing: -0.5px; }
+        .container.main-content { margin-top: 1.5rem; }
+        .form-select-lg { padding-top: .7rem; padding-bottom: .7rem; }
     </style>
 </head>
 
-<!-- ... (head and other parts of the template remain the same) ... -->
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm" style="background-color: var(--primary-color);">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('show_results', league_id=DEFAULT_LEAGUE_ID if DEFAULT_LEAGUE_ID else leagues.keys()|first) }}">LMN Radgona</a>
+            <!-- CORRECTED url_for HERE -->
+            <a class="navbar-brand" href="{{ url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID if DEFAULT_LEAGUE_ID else leagues.keys()|first) }}">LMN Radgona</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavLeagues"
                 aria-controls="navbarNavLeagues" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -47,8 +37,9 @@
                             </a>
                             <ul class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink-{{ league_key }}">
                                 <li>
-                                    <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_results' %}active{% endif %}"
-                                       href="{{ url_for('show_results', league_id=league_key) }}">
+                                    <!-- CORRECTED url_for AND request.endpoint HERE -->
+                                    <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_league_results' %}active{% endif %}"
+                                       href="{{ url_for('show_league_results', league_id=league_key) }}">
                                        <i class="fas fa-list-ol me-2"></i>Rezultati
                                     </a>
                                 </li>
@@ -66,12 +57,11 @@
         </div>
     </nav>
 
-    <div class="container main-content"> <!-- Added 'main-content' class for potential margin adjustment -->
-        <!-- The page_title_main already includes league, so we just show the round -->
-        <h2 class="page-subtitle text-center">{{ page_title_main.split(':')[-1].strip() }} - {{ page_title_round }}</h2>
-
+    <div class="container main-content">
+        <h2 class="page-subtitle text-center">{{ page_title_main.split(':')[-1].strip() }} - {{ page_title_section }}</h2> 
         {% if all_rounds %}
-        <form method="POST" action="{{ url_for('show_results', league_id=current_league_id) }}"
+        <!-- CORRECTED url_for HERE -->
+        <form method="POST" action="{{ url_for('show_league_results', league_id=current_league_id) }}"
             class="row g-3 align-items-center justify-content-center mb-5">
             <input type="hidden" name="league_id_form_field" value="{{ current_league_id }}">
             <div class="col-auto">
@@ -95,11 +85,12 @@
         </form>
         {% endif %}
 
+        <!-- ... (rest of your results_radgona.html content, ensuring match.score_str is used) ... -->
         {% if grouped_results %}
         {% for date_str, matches_in_date in grouped_results.items() %}
             {% set first_match_in_date = matches_in_date[0] %}
             {% set date_class = '' %}
-            {% set date_icon = 'fa-calendar-alt' %} <!-- Default calendar icon -->
+            {% set date_icon = 'fa-calendar-alt' %}
             {% if first_match_in_date.date_obj %}
                 {% if first_match_in_date.date_obj == today_date %}
                     {% set date_class = 'today' %}
@@ -110,13 +101,11 @@
                 {% endif %}
             {% endif %}
             <div class="date-header {{ date_class }}">
-                <i class="fas {{ date_icon }} me-2"></i> <!-- Added me-2 for margin -->
+                <i class="fas {{ date_icon }} me-2"></i>
                 {{ date_str }}
             </div>
 
-            <!-- ... other parts of the template ... -->
-
-            <div class="row"> <!-- This row is for match cards -->
+            <div class="row">
                 {% for match in matches_in_date %}
                     {% set card_class = '' %}
                     {% if match.date_obj %}
@@ -128,16 +117,15 @@
                     {% endif %}
                 <div class="col-12 mb-3">
                     <div class="match-card {{ card_class }}">
-                        <div class="row g-0 align-items-center"> <!-- Inner row for card structure -->
+                        <div class="row g-0 align-items-center">
                             <div class="col-md-2 match-time">
                                 <i class="fas fa-clock me-1 d-md-none"></i>{{ match.time }}
                             </div>
                             <div class="col-md-8 match-teams">
-                                <div class="row align-items-center gx-1 gx-sm-2"> <!-- Row for home-score-away -->
+                                <div class="row align-items-center gx-1 gx-sm-2">
                                     <div class="col-5 home-team team">
                                         <span class="team-name">{{ match.home_team }}</span>
                                     </div>
-                                    <!-- CORRECTED LINE BELOW -->
                                     <div class="col-2 text-center score {% if match.score_str == 'N/P' or match.score_str == '_ - _' %}not-played{% endif %}">
                                         {{ match.score_str }}
                                     </div>
@@ -153,33 +141,28 @@
                     </div>
                 </div>
                 {% endfor %}
-            </div> <!-- End of row for match cards -->
+            </div>
         {% endfor %}
         {% else %}
-        <div class="no-results alert alert-warning"> <!-- Use Bootstrap alert for consistency -->
+        <div class="no-results alert alert-warning">
             <i class="fas fa-exclamation-circle me-2"></i>
             <strong>Ni rezultatov!</strong> Za izbrani krog ni najdenih podatkov ali pa je prišlo do napake.
         </div>
         {% endif %}
 
         <footer class="footer text-center">
-             <!-- Displaying only the base domain for the source link -->
             <p>Podatki pridobljeni iz: <a href="{{ source_url_for_data.split('/index.php')[0] if source_url_for_data else 'https://www.lmn-radgona.si/' }}" target="_blank" rel="noopener noreferrer">LMN Radgona</a></p>
             <p>© <span id="current_year"></span> LMN Radgona Rezultati (neuradno). Vse pravice pridržane (razen podatkov, ki so last vira).</p>
         </footer>
     </div>
 
-    <!-- Bootstrap JS Bundle (Popper.js and Bootstrap JS) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
         crossorigin="anonymous"></script>
     <script>
         document.getElementById('current_year').textContent = new Date().getFullYear();
-
-        // Add animation to match cards when they come into view
         document.addEventListener('DOMContentLoaded', function () {
             const matchCards = document.querySelectorAll('.match-card');
-
             const observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
@@ -189,7 +172,6 @@
                     }
                 });
             }, { threshold: 0.1 });
-
             matchCards.forEach(card => {
                 card.style.opacity = '0';
                 card.style.transform = 'translateY(20px)';
