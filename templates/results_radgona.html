@@ -29,10 +29,11 @@
     </style>
 </head>
 
+<!-- ... (head and other parts of the template remain the same) ... -->
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm" style="background-color: var(--primary-color);">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('show_results', league_id=DEFAULT_LEAGUE_ID) }}">LMN Radgona</a>
+            <a class="navbar-brand" href="{{ url_for('show_results', league_id=DEFAULT_LEAGUE_ID if DEFAULT_LEAGUE_ID else leagues.keys()|first) }}">LMN Radgona</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavLeagues"
                 aria-controls="navbarNavLeagues" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -40,25 +41,30 @@
             <div class="collapse navbar-collapse" id="navbarNavLeagues">
                 <ul class="navbar-nav ms-auto">
                     {% for league_key, league_info in leagues.items() %}
-                    <li class="nav-item">
-                        <a class="nav-link {% if league_key == current_league_id %}active fw-bold{% endif %}"
-                           aria-current="{% if league_key == current_league_id %}page{% endif %}"
-                           href="{{ url_for('show_results', league_id=league_key) }}">
-                           {{ league_info.display_name }}
-                        </a>
-                    </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle {% if league_key == current_league_id %}active fw-bold{% endif %}" href="#" id="navbarDropdownMenuLink-{{ league_key }}" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                {{ league_info.display_name }}
+                            </a>
+                            <ul class="dropdown-menu" aria-labelledby="navbarDropdownMenuLink-{{ league_key }}">
+                                <li>
+                                    <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_results' %}active{% endif %}"
+                                       href="{{ url_for('show_results', league_id=league_key) }}">
+                                       <i class="fas fa-list-ol me-2"></i>Rezultati
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item {% if league_key == current_league_id and request.endpoint == 'show_leaderboard' %}active{% endif %}"
+                                       href="{{ url_for('show_leaderboard', league_id=league_key) }}">
+                                       <i class="fas fa-trophy me-2"></i>Lestvica
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
                     {% endfor %}
                 </ul>
             </div>
         </div>
     </nav>
-
-    <!-- Old header can be removed or repurposed if navbar is primary header -->
-    <!-- <header class="header-banner text-center">
-        <div class="container">
-            <h1>{{ page_title_main.split(':')[-1].strip() }}</h1>
-        </div>
-    </header> -->
 
     <div class="container main-content"> <!-- Added 'main-content' class for potential margin adjustment -->
         <!-- The page_title_main already includes league, so we just show the round -->
@@ -108,6 +114,8 @@
                 {{ date_str }}
             </div>
 
+            <!-- ... other parts of the template ... -->
+
             <div class="row"> <!-- This row is for match cards -->
                 {% for match in matches_in_date %}
                     {% set card_class = '' %}
@@ -129,8 +137,9 @@
                                     <div class="col-5 home-team team">
                                         <span class="team-name">{{ match.home_team }}</span>
                                     </div>
-                                    <div class="col-2 text-center score {% if match.score == 'N/P' or match.score == '_ - _' %}not-played{% endif %}">
-                                        {{ match.score }}
+                                    <!-- CORRECTED LINE BELOW -->
+                                    <div class="col-2 text-center score {% if match.score_str == 'N/P' or match.score_str == '_ - _' %}not-played{% endif %}">
+                                        {{ match.score_str }}
                                     </div>
                                     <div class="col-5 away-team team">
                                         <span class="team-name">{{ match.away_team }}</span>

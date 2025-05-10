@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title_main }} - {{ page_title_section }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='results_radgona.css') }}">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Google Fonts & Font Awesome (same as results_radgona.html) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* You can reuse styles from results_radgona.css or add specific leaderboard styles */
+        .table th, .table td {
+            vertical-align: middle;
+        }
+        .rank-col { width: 5%; text-align: center; }
+        .team-col { width: 35%; }
+        .stats-col { width: 8%; text-align: center; }
+        .points-col { width: 10%; text-align: center; font-weight: bold; }
+
+        /* Highlight rows (example) */
+        .leaderboard-table tbody tr:nth-child(-n+1) { /* Top 1 - champions (example) */
+            background-color: #d1e7dd; /* Light green */
+        }
+        /* .leaderboard-table tbody tr:nth-last-child(-n+2) { /* Bottom 2 - relegation (example) */
+            /* background-color: #f8d7da; /* Light red */
+        /* } */
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm" style="background-color: var(--primary-color);">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('show_results', league_id=DEFAULT_LEAGUE_ID) }}">LMN Radgona</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavLeagues"
+                aria-controls="navbarNavLeagues" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNavLeagues">
+                <ul class="navbar-nav ms-auto">
+                    {% for league_key, league_info in leagues.items() %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if league_key == current_league_id and request.endpoint == 'show_results' %}active fw-bold{% endif %}"
+                           href="{{ url_for('show_results', league_id=league_key) }}">
+                           {{ league_info.display_name }} Rezultati
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if league_key == current_league_id and request.endpoint == 'show_leaderboard' %}active fw-bold{% endif %}"
+                           href="{{ url_for('show_leaderboard', league_id=league_key) }}">
+                           {{ league_info.display_name }} Lestvica
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h2 class="page-subtitle text-center">{{ page_title_main.split(':')[-1].strip() }} - {{ page_title_section }}</h2>
+
+        {% if leaderboard_data %}
+        <div class="table-responsive mt-4">
+            <table class="table table-striped table-hover leaderboard-table">
+                <thead class="table-light">
+                    <tr>
+                        <th scope="col" class="rank-col">#</th>
+                        <th scope="col" class="team-col">Ekipa</th>
+                        <th scope="col" class="stats-col" title="Odigrano">OD</th>
+                        <th scope="col" class="stats-col" title="Zmage">Z</th>
+                        <th scope="col" class="stats-col" title="Neodločeno">N</th>
+                        <th scope="col" class="stats-col" title="Porazi">P</th>
+                        <th scope="col" class="stats-col" title="Dani goli">DG</th>
+                        <th scope="col" class="stats-col" title="Prejeti goli">PG</th>
+                        <th scope="col" class="stats-col" title="Gol razlika">GR</th>
+                        <th scope="col" class="points-col">Točke</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for team_stat in leaderboard_data %}
+                    <tr>
+                        <td class="rank-col">{{ loop.index }}</td>
+                        <td class="team-col fw-medium">{{ team_stat.name }}</td>
+                        <td class="stats-col">{{ team_stat.played }}</td>
+                        <td class="stats-col">{{ team_stat.won }}</td>
+                        <td class="stats-col">{{ team_stat.drawn }}</td>
+                        <td class="stats-col">{{ team_stat.lost }}</td>
+                        <td class="stats-col">{{ team_stat.goals_for }}</td>
+                        <td class="stats-col">{{ team_stat.goals_against }}</td>
+                        <td class="stats-col">{{ team_stat.goal_difference }}</td>
+                        <td class="points-col">{{ team_stat.points }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="alert alert-info text-center mt-4" role="alert">
+            <i class="fas fa-info-circle me-2"></i>
+            Lestvica se izračunava. Prosimo, počakajte ali pa za to ligo še ni odigranih tekem.
+        </div>
+        {% endif %}
+
+        <footer class="footer text-center">
+            <p>Podatki pridobljeni iz: <a href="{{ source_url_for_data.split('/index.php')[0] if source_url_for_data else 'https://www.lmn-radgona.si/' }}" target="_blank" rel="noopener noreferrer">LMN Radgona</a></p>
+            <p>© <span id="current_year"></span> LMN Radgona Rezultati (neuradno). Vse pravice pridržane (razen podatkov, ki so last vira).</p>
+        </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <script>
+        document.getElementById('current_year').textContent = new Date().getFullYear();
+    </script>
+</body>
+</html>

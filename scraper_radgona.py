@@ -1,3 +1,4 @@
+# scraper_radgona.py (relevant parts, assume others are as before)
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -7,10 +8,7 @@ from datetime import datetime
 BASE_URL = "https://www.lmn-radgona.si"
 
 def parse_slovene_date_from_header(date_str_full):
-    """
-    Parses a date string like 'Sobota, 03.05.2025' or 'Nedelja, 04.05.2025'
-    into a datetime.date object. Returns None if parsing fails.
-    """
+    # ... (as before)
     if not date_str_full or not isinstance(date_str_full, str):
         return None
     try:
@@ -22,10 +20,10 @@ def parse_slovene_date_from_header(date_str_full):
         return None
     return None
 
-
 def extract_round_options_and_current(soup, current_url):
+    # ... (as before)
     round_options = []
-    selected_round_info = {'name': "N/A", 'url': current_url}
+    selected_round_info = {'name': "N/A", 'url': current_url, 'id': None}
 
     select_round_element = soup.find('select', id='select-round')
     if select_round_element:
@@ -33,14 +31,23 @@ def extract_round_options_and_current(soup, current_url):
         for option in options:
             round_name = option.get_text(strip=True)
             relative_url = option.get('value')
+            round_id = None
+            if relative_url:
+                # Try to extract round ID from URL, e.g., /587/ in the path
+                path_parts = relative_url.split('/')
+                for part in reversed(path_parts): # Search from end
+                    if part.isdigit() and len(path_parts) > 5: # Basic check
+                        round_id = part
+                        break
+            
             if round_name and relative_url:
                 full_url = urljoin(BASE_URL, relative_url)
-                opt_data = {'name': round_name, 'url': full_url}
+                opt_data = {'name': round_name, 'url': full_url, 'id': round_id}
                 round_options.append(opt_data)
                 if option.has_attr('selected'):
                     selected_round_info = opt_data
     
-    if selected_round_info['name'] == "N/A":
+    if selected_round_info['name'] == "N/A": # Fallback if 'selected' not present
         for r_opt in round_options:
             if r_opt['url'] == current_url:
                 selected_round_info = r_opt
@@ -63,12 +70,41 @@ def extract_round_options_and_current(soup, current_url):
     return round_options, selected_round_info
 
 
-def fetch_lmn_radgona_data(url_to_scrape):
-    """Fetches match results and available round options from the given URL."""
-    match_results_list = []
-    available_rounds = []
-    current_round_info = {'name': "N/A", 'url': url_to_scrape}
+def parse_score(score_str):
+    """
+    Parses a score string like '2 - 1' into (home_goals, away_goals).
+    Returns (None, None) if the score is not valid or not played.
+    """
+    if not score_str or score_str.strip().lower() in ["n/p", "_ - _", "preloženo"]:
+        return None, None
+    
+    score_parts = score_str.split('-')
+    if len(score_parts) == 2:
+        try:
+            home_goals = int(score_parts[0].strip())
+            away_goals = int(score_parts[1].strip())
+            return home_goals, away_goals
+        except ValueError:
+            return None, None # Could not convert to int
+    return None, None
 
+
+def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False):
+    """
+    Fetches match results from the given URL.
+    If fetch_all_rounds_data is True, it will try to scrape all rounds for leaderboard calculation.
+    Returns:
+        - matches for the current page/round
+        - all_match_data (if fetch_all_rounds_data is True, else None)
+        - available_rounds (list of dicts for dropdown)
+        - current_round_info (dict for the current page/round)
+    """
+    page_matches = []
+    all_match_data_for_leaderboard = [] if fetch_all_rounds_data else None
+    available_rounds = []
+    current_round_info = {'name': "N/A", 'url': url_to_scrape, 'id': None}
+    
+    # --- Initial fetch to get round options and current page data ---
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -76,118 +112,148 @@ def fetch_lmn_radgona_data(url_to_scrape):
         print(f"Fetching data from: {url_to_scrape}")
         response = requests.get(url_to_scrape, headers=headers, timeout=15)
         response.raise_for_status()
-
         soup = BeautifulSoup(response.content, 'html.parser')
 
         available_rounds, current_round_info_from_select = extract_round_options_and_current(soup, url_to_scrape)
-        if current_round_info_from_select['name'] != "N/A":
+        if current_round_info_from_select['name'] != "N/A": # Update if select box provided better name/id
             current_round_info = current_round_info_from_select
 
+        # --- Function to parse matches from a soup object ---
+        def _parse_matches_from_soup(soup_obj, round_name_for_match="N/A"):
+            matches_found = []
+            fixtures_table = soup_obj.find('table', class_='fixtures-results')
+            if not fixtures_table: return matches_found
 
-        fixtures_table = soup.find('table', class_='fixtures-results')
+            current_date_str_from_header = "N/A"
+            for row in fixtures_table.find_all('tr', recursive=False):
+                if 'sectiontableheader' in row.get('class', []):
+                    date_th = row.find('th')
+                    current_date_str_from_header = date_th.get_text(strip=True) if date_th and date_th.get_text(strip=True) else "Datum ni določen"
+                    continue
 
-        if not fixtures_table:
-            print(f"Could not find the 'fixtures-results' table on {url_to_scrape}.")
-            return match_results_list, available_rounds, current_round_info
+                if 'sectiontableentry1' in row.get('class', []) or 'sectiontableentry2' in row.get('class', []):
+                    cells = row.find_all('td', recursive=False)
+                    if len(cells) >= 10:
+                        try:
+                            match_time_abbr = cells[1].find('abbr', class_='dtstart')
+                            match_time = match_time_abbr.get_text(strip=True) if match_time_abbr else "N/A"
+                            home_team_span = cells[3].find('span')
+                            home_team = home_team_span.get_text(strip=True) if home_team_span else "N/A"
+                            
+                            score_cell_link = cells[5].find('a')
+                            score_span = score_cell_link.find('span', class_=re.compile(r'score.*')) if score_cell_link else None
+                            score_str = "N/P"
+                            if score_span:
+                                score_raw = score_span.get_text(separator="").replace('\xa0', ' ').strip()
+                                if any(char.isdigit() for char in score_raw) or "preloženo" in score_raw.lower():
+                                    score_str = score_raw
+                                elif "_ - _" in score_raw: score_str = "N/P"
+                            elif score_cell_link and score_cell_link.get_text(strip=True) == "-": score_str = "N/P"
 
-        current_date_str_from_header = "N/A"
-        
-        for row in fixtures_table.find_all('tr', recursive=False):
-            if 'sectiontableheader' in row.get('class', []):
-                date_th = row.find('th')
-                if date_th:
-                    current_date_str_from_header = date_th.get_text(strip=True) if date_th.get_text(strip=True) else "Datum ni določen"
-                continue
+                            away_team_span = cells[7].find('span')
+                            away_team = away_team_span.get_text(strip=True) if away_team_span else "N/A"
+                            venue_cell = cells[9].find('a')
+                            venue = venue_cell.get_text(strip=True) if venue_cell else "N/A"
+                            parsed_date_obj = parse_slovene_date_from_header(current_date_str_from_header)
 
-            if 'sectiontableentry1' in row.get('class', []) or \
-               'sectiontableentry2' in row.get('class', []):
+                            # Skip if essential team names are missing
+                            if home_team == "N/A" or away_team == "N/A": continue
+
+                            matches_found.append({
+                                'round_name': round_name_for_match, # Store which round this match belongs to
+                                'date_str': current_date_str_from_header,
+                                'date_obj': parsed_date_obj,
+                                'time': match_time,
+                                'home_team': home_team,
+                                'score_str': score_str, # Store the raw score string
+                                'away_team': away_team,
+                                'venue': venue
+                            })
+                        except Exception as e_parse:
+                            print(f"Error parsing match row: {e_parse}")
+            return matches_found
+
+        # Parse matches for the current page
+        page_matches = _parse_matches_from_soup(soup, current_round_info['name'])
+
+        # --- If fetch_all_rounds_data is True, iterate and scrape all rounds ---
+        if fetch_all_rounds_data and available_rounds:
+            print(f"Fetching all rounds data for leaderboard. Total rounds: {len(available_rounds)}")
+            # Use a set to avoid duplicate matches if a match appears in multiple rounds (unlikely but possible)
+            unique_match_identifiers = set()
+
+            for i, round_opt in enumerate(available_rounds):
+                # Don't re-scrape the current page if its data is already parsed
+                # if round_opt['url'] == url_to_scrape and page_matches:
+                #     for match in page_matches:
+                #         match_id = f"{match['home_team']}-{match['away_team']}-{match.get('date_str','N/A')}-{match.get('score_str','N/P')}"
+                #         if match_id not in unique_match_identifiers:
+                #             all_match_data_for_leaderboard.append(match)
+                #             unique_match_identifiers.add(match_id)
+                #     print(f"({i+1}/{len(available_rounds)}) Used current page data for round: {round_opt['name']}")
+                #     continue
                 
-                cells = row.find_all('td', recursive=False)
-
-                if len(cells) >= 10:
-                    try:
-                        match_time_abbr = cells[1].find('abbr', class_='dtstart')
-                        match_time = match_time_abbr.get_text(strip=True) if match_time_abbr else "N/A"
-
-                        home_team_span = cells[3].find('span')
-                        home_team = home_team_span.get_text(strip=True) if home_team_span else "N/A"
+                # Check if this round has already been processed by its ID (if round_id is reliable)
+                # This is an optimization; for simplicity, we can re-parse all.
+                # However, the current_round_info might be from a default page, not a specific round url.
+                # So, it's safer to just fetch all if fetch_all_rounds_data is True.
+                
+                try:
+                    print(f"({i+1}/{len(available_rounds)}) Fetching round: {round_opt['name']} from {round_opt['url']}")
+                    round_response = requests.get(round_opt['url'], headers=headers, timeout=10)
+                    round_response.raise_for_status()
+                    round_soup = BeautifulSoup(round_response.content, 'html.parser')
+                    matches_from_round = _parse_matches_from_soup(round_soup, round_opt['name'])
+                    
+                    for match in matches_from_round:
+                        # Create a more robust identifier for a match
+                        match_id = f"{match['home_team']}-{match['away_team']}-{match.get('date_str','N/A')}-{match.get('round_name', 'N/A')}"
+                        # Alternative: identify by teams and round ID if available and unique
+                        # if round_opt.get('id'):
+                        #    match_id = f"{match['home_team']}-{match['away_team']}-{round_opt['id']}"
                         
-                        score_cell_link = cells[5].find('a')
-                        score_span = score_cell_link.find('span', class_=re.compile(r'score.*')) if score_cell_link else None
-                        
-                        score = "N/P" 
-                        if score_span:
-                            score_raw = score_span.get_text(separator="").replace('\xa0', ' ').strip()
-                            if any(char.isdigit() for char in score_raw) or "preloženo" in score_raw.lower():
-                                score = score_raw
-                            elif "_ - _" in score_raw : 
-                                score = "N/P" 
-                        elif score_cell_link and score_cell_link.get_text(strip=True) == "-":
-                             score = "N/P"
+                        if match_id not in unique_match_identifiers:
+                            all_match_data_for_leaderboard.append(match)
+                            unique_match_identifiers.add(match_id)
+                        # else:
+                        #     print(f"  Skipping duplicate match: {match_id}")
 
 
-                        away_team_span = cells[7].find('span')
-                        away_team = away_team_span.get_text(strip=True) if away_team_span else "N/A"
-
-                        venue_cell = cells[9].find('a')
-                        venue = venue_cell.get_text(strip=True) if venue_cell else "N/A"
-                        
-                        parsed_date_obj = parse_slovene_date_from_header(current_date_str_from_header)
-
-                        match_results_list.append({
-                            'date_str': current_date_str_from_header, 
-                            'date_obj': parsed_date_obj, 
-                            'time': match_time,
-                            'home_team': home_team,
-                            'score': score,
-                            'away_team': away_team,
-                            'venue': venue
-                        })
-                    except AttributeError as e:
-                        print(f"Skipping a row due to missing element (AttributeError): {e} in row: {row.prettify()[:200]}...")
-                    except IndexError as e:
-                        print(f"Skipping a row due to missing cell (IndexError): {e} in row: {row.prettify()[:200]}...")
-        
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching URL {url_to_scrape}: {e}")
-    except Exception as e:
-        print(f"An error occurred during scraping {url_to_scrape}: {e}")
+                except requests.exceptions.RequestException as e_round:
+                    print(f"  Error fetching round {round_opt['name']}: {e_round}")
+                except Exception as e_all:
+                    print(f"  An unexpected error occurred for round {round_opt['name']}: {e_all}")
+                    import traceback
+                    traceback.print_exc()
+            print(f"Finished fetching all rounds. Total unique matches for leaderboard: {len(all_match_data_for_leaderboard)}")
+            
+    except requests.exceptions.RequestException as e_main:
+        print(f"Main error fetching URL {url_to_scrape}: {e_main}")
+    except Exception as e_fatal:
+        print(f"A fatal error occurred during initial scrape of {url_to_scrape}: {e_fatal}")
         import traceback
         traceback.print_exc()
             
-    return match_results_list, available_rounds, current_round_info
+    return page_matches, all_match_data_for_leaderboard, available_rounds, current_round_info
 
-
+# ... (if __name__ == '__main__' block for testing)
 if __name__ == '__main__':
-    default_page_url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+    # Test fetching all rounds for leaderboard
+    liga_a_razpored_url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
     
-    matches, rounds, current_round = fetch_lmn_radgona_data(default_page_url)
-    
-    print(f"\n--- Default Loaded Round ---")
-    print(f"Name: {current_round['name']}, URL: {current_round['url']}")
+    print("\n--- TESTING LEADERBOARD DATA FETCH ---")
+    _, all_matches, rounds_list, current_r_info = fetch_lmn_radgona_data(liga_a_razpored_url, fetch_all_rounds_data=True)
 
-    print(f"\n--- Rounds Available ({len(rounds)}) ---")
-    for r_idx, r in enumerate(rounds):
-        if r_idx < 3 or r_idx > len(rounds) - 4 :
-             print(f"{r['name']}: {r['url']}")
-        elif r_idx == 3:
-            print("...")
-
-
-    print(f"\n--- Matches for: {current_round['name']} ---")
-    if matches:
-        today_actual = datetime.now().date()
-        print(f"(Actual Today: {today_actual.strftime('%A, %d.%m.%Y')})")
-        for item in matches:
-            date_status = ""
-            if item['date_obj']:
-                if item['date_obj'] == today_actual:
-                    date_status = " (DANES)"
-                elif item['date_obj'] < today_actual:
-                    date_status = " (Preteklo)"
-                else:
-                    date_status = " (Prihodnje)"
-
-            print(f"{item['date_str']}{date_status} @ {item['time']} [{item['venue']}]: {item['home_team']} {item['score']} {item['away_team']}")
+    if all_matches:
+        print(f"\nTotal unique matches scraped for leaderboard: {len(all_matches)}")
+        # Print first few and last few matches
+        for m_idx, m in enumerate(all_matches):
+            if m_idx < 2 or m_idx > len(all_matches) - 3:
+                print(f"  {m['round_name']}: {m['date_str']} - {m['home_team']} {m['score_str']} {m['away_team']}")
+            elif m_idx == 2:
+                print("  ...")
     else:
-        print("No match data scraped for the default round.")
+        print("No matches collected for leaderboard calculation.")
+
+    print(f"\nAvailable rounds found: {len(rounds_list)}")
+    print(f"Current round info from page: {current_r_info}")
