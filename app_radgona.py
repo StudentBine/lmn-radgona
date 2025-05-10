@@ -198,12 +198,6 @@ def show_leaderboard(league_id):
     current_league_config = LEAGUES_CONFIG[league_id]
     leaderboard_data = database.get_cached_leaderboard(league_id)
 
-    # --- DEBUGGING: Always recalculate for Liga A to trace data flow ---
-    if league_id == "liga_a":
-        print(f"\n--- DEBUG: Forcing leaderboard recalculation for Liga A ---")
-        leaderboard_data = None 
-    # --- END DEBUGGING ---
-
     if leaderboard_data is None:
         print(f"Leaderboard cache miss/stale for {league_id}. Preparing to calculate.")
         

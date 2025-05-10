@@ -7,6 +7,16 @@ CACHE_DURATION_ROUNDS = timedelta(hours=24) # How long to cache the list of roun
 CACHE_DURATION_MATCHES = timedelta(hours=1)  # How long to cache individual round matches
 CACHE_DURATION_LEADERBOARD = timedelta(hours=1) # How long to cache calculated leaderboard
 
+def is_round_in_past(league_id, round_url):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT date_obj FROM matches WHERE league_id = ? AND round_url = ?', (league_id, round_url))
+    rows = cursor.fetchall()
+    conn.close()
+    now = datetime.now().date()
+    return all(datetime.fromisoformat(row['date_obj']).date() < now - timedelta(days=2) for row in rows if row['date_obj'])
+
+
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row # Access columns by name
@@ -100,7 +110,7 @@ def get_cached_round_matches(league_id, round_url):
 
     if staleness_check_row and staleness_check_row['oldest_scrape_time']:
         oldest_scrape_dt = datetime.fromisoformat(staleness_check_row['oldest_scrape_time'])
-        if datetime.now() - oldest_scrape_dt < CACHE_DURATION_MATCHES:
+        if is_round_in_past(league_id, round_url):
             # Cache is fresh, retrieve all matches for this round_url
             cursor.execute('''
                 SELECT * FROM matches 
