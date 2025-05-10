@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta # timedelta needed for cache expiry
 from urllib.parse import urljoin
 from collections import defaultdict
-import database 
+import database_postgres as database
 
 app = Flask(__name__)
 database.init_db() 
@@ -273,12 +273,5 @@ def show_leaderboard(league_id):
                            )
 
 if __name__ == '__main__':
-    extra_dirs = ['templates',]
-    extra_files = extra_dirs[:]
-    for extra_dir in extra_dirs:
-        for dirname, dirs, files in os.walk(extra_dir):
-            for filename in files:
-                filename = os.path.join(dirname, filename)
-                if os.path.isfile(filename):
-                    extra_files.append(filename)
-    app.run(debug=True, extra_files=extra_files)
+    database.init_db()
+    app.run(host='0.0.0.0', port=5000)

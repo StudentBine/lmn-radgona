@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: lmn-radgona
+    env: python
+    plan: free
+    buildCommand: ""
+    startCommand: gunicorn app_radgona:app
+    envVars:
+      - key: FLASK_ENV
+        value: production
