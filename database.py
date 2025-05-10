@@ -3,7 +3,8 @@ import json
 from datetime import datetime, timedelta
 import psycopg2
 from psycopg2.extras import RealDictCursor
-
+from dotenv import load_dotenv
+load_dotenv()
 # --- Constants ---
 CACHE_DURATION_ROUNDS = timedelta(hours=24)
 CACHE_DURATION_MATCHES = timedelta(hours=1)
@@ -11,7 +12,7 @@ CACHE_DURATION_LEADERBOARD = timedelta(hours=1)
 
 # --- Database connection ---
 def get_db_connection():
-    db_url = os.environ.get("postgresql://root:JhrizR9fqNRT5Qk0yLqZsabEvFKV4Xzf@dpg-d0flnd3uibrs73erdvtg-a.oregon-postgres.render.com/lmn_radgona_db")
+    db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         raise RuntimeError("DATABASE_URL environment variable is not set.")
     conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)

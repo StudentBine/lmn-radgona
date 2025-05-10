@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta # timedelta needed for cache expiry
 from urllib.parse import urljoin
 from collections import defaultdict
-import database_postgres as database
+import database as database
 
 app = Flask(__name__)
 database.init_db() 
