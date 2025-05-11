@@ -1,12 +1,17 @@
 from flask import Flask, render_template, request, redirect, url_for
+from flask_caching import Cache
+from flask_compress import Compress
 from scraper_radgona import fetch_lmn_radgona_data, BASE_URL, parse_score
-import os
 from datetime import datetime
 from urllib.parse import urljoin
 from collections import defaultdict
 import database
 
 app = Flask(__name__)
+Compress(app)
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
+
+database.init_db_pool()
 database.init_db()
 
 LEAGUES_CONFIG = {
@@ -35,7 +40,7 @@ def calculate_leaderboard(all_matches_for_league):
         return []
     team_stats = defaultdict(lambda: {'played': 0, 'won': 0, 'drawn': 0, 'lost': 0,
                                       'goals_for': 0, 'goals_against': 0, 'goal_difference': 0,
-                                      'points': 0, 'name': ''})
+                                      'points': 0, 'name': '', 'css_class': ''})
     for match in all_matches_for_league:
         home = match['home_team']
         away = match['away_team']
@@ -71,17 +76,32 @@ def calculate_leaderboard(all_matches_for_league):
         leaderboard.append(stats)
     leaderboard.sort(key=lambda x: x['name'])
     leaderboard.sort(key=lambda x: (x['points'], x['goal_difference'], x['goals_for']), reverse=True)
+
+    # Add display class tags based on league-specific rules
+    for i, team in enumerate(leaderboard):
+        team['css_class'] = ''
+    if leaderboard:
+        if len(leaderboard) >= 2:
+            if league_id == 'liga_a':
+                leaderboard[-1]['css_class'] = 'last-place'
+                leaderboard[-2]['css_class'] = 'last-place'
+                leaderboard[0]['css_class'] = 'top-place'
+            elif league_id == 'liga_b':
+                leaderboard[0]['css_class'] = 'top-place'
+                leaderboard[1]['css_class'] = 'top-place'
+
     return leaderboard
 
 @app.route('/')
 def index():
     return redirect(url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID))
 
+@cache.cached(timeout=300, query_string=True)
 @app.route('/league/<league_id>/results', methods=['GET', 'POST'])
 def show_league_results(league_id):
     if league_id not in LEAGUES_CONFIG:
         return redirect(url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID))
-    
+
     league_config = LEAGUES_CONFIG[league_id]
     target_round_url = league_config["main_results_page_url"]
 
@@ -111,7 +131,7 @@ def show_league_results(league_id):
         target_round_url = initial_page_round_info['url']
 
     page_matches = database.get_cached_round_matches(league_id, target_round_url)
-    round_details = None
+    round_details = next((r for r in available_rounds or [] if r['url'] == target_round_url), None)
 
     if page_matches is None:
         scraped_matches, _, _, scraped_round_info = fetch_lmn_radgona_data(
@@ -122,19 +142,10 @@ def show_league_results(league_id):
             round_details = scraped_round_info
         else:
             page_matches = []
-            for r in available_rounds or []:
-                if r['url'] == target_round_url:
-                    round_details = r
-                    break
             if not round_details:
                 round_details = {'name': 'Napaka pri nalaganju', 'url': target_round_url}
-    else:
-        for r in available_rounds or []:
-            if r['url'] == target_round_url:
-                round_details = r
-                break
-        if not round_details:
-            round_details = {'name': 'Krog (iz predpomn.)', 'url': target_round_url}
+    elif not round_details:
+        round_details = {'name': 'Krog (iz predpomn.)', 'url': target_round_url}
 
     grouped_data = defaultdict(list)
     for match in page_matches:
@@ -150,37 +161,48 @@ def show_league_results(league_id):
                            today_date=datetime.now().date(),
                            current_league_id=league_id)
 
+@cache.cached(timeout=300)
 @app.route('/league/<league_id>/leaderboard')
 def show_leaderboard(league_id):
     if league_id not in LEAGUES_CONFIG:
         return redirect(url_for('show_leaderboard', league_id=DEFAULT_LEAGUE_ID))
-    
+
     force_refresh = request.args.get('force', 'false').lower() == 'true'
     leaderboard_data = None if force_refresh else database.get_cached_leaderboard(league_id)
 
-    if leaderboard_data is None:
-        league_config = LEAGUES_CONFIG[league_id]
-        all_rounds = database.get_cached_rounds(league_id)
-        if not all_rounds:
-            _, _, scraped_rounds, _ = fetch_lmn_radgona_data(league_config["main_results_page_url"], False)
-            if scraped_rounds:
-                all_rounds = scraped_rounds
-                database.cache_rounds(league_id, scraped_rounds)
-
-        for round_opt in all_rounds or []:
-            try:
-                cached = database.get_cached_round_matches(league_id, round_opt['url'])
-                if cached is None:
-                    scraped, _, _, _ = fetch_lmn_radgona_data(round_opt['url'], fetch_all_rounds_data=False)
-                    if scraped:
-                        database.cache_matches(league_id, round_opt['url'], scraped)
-            except Exception as e:
-                print(f"Napaka pri scrapingu kroga {round_opt['name']}: {e}")
-
+    if leaderboard_data is None or force_refresh:
+        # Only update latest round instead of scraping all
+        current_round_info = None
+        rounds = database.get_cached_rounds(league_id)
+        if not rounds:
+            _, _, rounds, current_round_info = fetch_lmn_radgona_data(
+                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False)
+            if rounds:
+                database.cache_rounds(league_id, rounds)
+        if rounds:
+            current_round_info = rounds[-1] if not current_round_info else current_round_info
+            if database.get_cached_round_matches(league_id, current_round_info['url']) is None:
+                scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False)
+                if scraped:
+                    database.cache_matches(league_id, current_round_info['url'], scraped)
         all_matches = database.get_all_matches_for_league(league_id)
         leaderboard_data = calculate_leaderboard(all_matches)
         if leaderboard_data:
             database.cache_leaderboard(league_id, leaderboard_data)
+
+    # Ensure leaderboard has css_class keys if loaded from cache
+    for i, team in enumerate(leaderboard_data):
+        if 'css_class' not in team:
+            team['css_class'] = ''
+    if leaderboard_data:
+        if len(leaderboard_data) >= 2:
+            if league_id == 'liga_a':
+                leaderboard_data[-1]['css_class'] = 'last-place'
+                leaderboard_data[-2]['css_class'] = 'last-place'
+                leaderboard_data[0]['css_class'] = 'top-place'
+            elif league_id == 'liga_b':
+                leaderboard_data[0]['css_class'] = 'top-place'
+                leaderboard_data[1]['css_class'] = 'top-place'
 
     return render_template('leaderboard.html',
                            leaderboard_data=leaderboard_data,
@@ -189,43 +211,7 @@ def show_leaderboard(league_id):
                            current_league_id=league_id,
                            source_url_for_data=LEAGUES_CONFIG[league_id]['main_results_page_url'])
 
-# --- Predcachiranje ---
-def precache_all_leagues():
-    print("== Začenjam predcachiranje vseh lig ==")
-    for league_id, config in LEAGUES_CONFIG.items():
-        print(f"\n-- Liga: {league_id} --")
-
-        rounds = database.get_cached_rounds(league_id)
-        if not rounds:
-            print(f"Ni keširanih rund za {league_id}, scrapeam ...")
-            _, _, scraped_rounds, _ = fetch_lmn_radgona_data(config['main_results_page_url'], fetch_all_rounds_data=False)
-            if scraped_rounds:
-                database.cache_rounds(league_id, scraped_rounds)
-                rounds = scraped_rounds
-                print(f"Shranjene runde ({len(rounds)}) za {league_id}")
-            else:
-                print(f"NAPAKA: Runde za {league_id} ni bilo mogoče pridobiti.")
-                continue
-
-        for i, round_opt in enumerate(rounds):
-            url = round_opt['url']
-            cached = database.get_cached_round_matches(league_id, url)
-            if cached is None:
-                print(f"  ({i+1}/{len(rounds)}) Scrapeam tekme za krog '{round_opt['name']}' ...")
-                try:
-                    matches, _, _, _ = fetch_lmn_radgona_data(url, fetch_all_rounds_data=False)
-                    if matches:
-                        database.cache_matches(league_id, url, matches)
-                        print(f"    ✓ Shranjene {len(matches)} tekme.")
-                    else:
-                        print(f"    ✗ Ni najdenih tekem.")
-                except Exception as e:
-                    print(f"    ❌ Napaka pri scrapeanju: {e}")
-            else:
-                print(f"  ({i+1}/{len(rounds)}) Krog '{round_opt['name']}' že v kešu ({len(cached)} tekem).")
-    print("== Predcachiranje zaključeno ==")
-
 if __name__ == '__main__':
+    database.init_db_pool()
     database.init_db()
-    precache_all_leagues()
     app.run(host='0.0.0.0', port=5000)

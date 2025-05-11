@@ -256,3 +256,15 @@ body {
         transform: translateY(0);
     }
 }
+
+.top-place {
+    background-color: rgba(56, 176, 0, 0.12);
+    font-weight: 600;
+    color: var(--success-color);
+}
+
+.last-place {
+    background-color: rgba(230, 57, 70, 0.12);
+    font-weight: 600;
+    color: #e63946;
+}
