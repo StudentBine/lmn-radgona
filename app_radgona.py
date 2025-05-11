@@ -35,7 +35,7 @@ def inject_global_vars():
         leagues=LEAGUES_CONFIG
     )
 
-def calculate_leaderboard(all_matches_for_league):
+def calculate_leaderboard(all_matches_for_league, league_id):
     if not all_matches_for_league:
         return []
     team_stats = defaultdict(lambda: {'played': 0, 'won': 0, 'drawn': 0, 'lost': 0,
@@ -77,17 +77,20 @@ def calculate_leaderboard(all_matches_for_league):
     leaderboard.sort(key=lambda x: x['name'])
     leaderboard.sort(key=lambda x: (x['points'], x['goal_difference'], x['goals_for']), reverse=True)
 
-    # Add display class tags based on league-specific rules
     for i, team in enumerate(leaderboard):
         team['css_class'] = ''
     if leaderboard:
-        if len(leaderboard) >= 2:
-            if league_id == 'liga_a':
-                leaderboard[-1]['css_class'] = 'last-place'
+        if league_id == 'liga_a':
+            if len(leaderboard) >= 1:
+                leaderboard[0]['css_class'] = 'top-place'
+            if len(leaderboard) >= 2:
                 leaderboard[-2]['css_class'] = 'last-place'
+            if len(leaderboard) >= 1:
+                leaderboard[-1]['css_class'] = 'last-place'
+        elif league_id == 'liga_b':
+            if len(leaderboard) >= 1:
                 leaderboard[0]['css_class'] = 'top-place'
-            elif league_id == 'liga_b':
-                leaderboard[0]['css_class'] = 'top-place'
+            if len(leaderboard) >= 2:
                 leaderboard[1]['css_class'] = 'top-place'
 
     return leaderboard
@@ -171,7 +174,6 @@ def show_leaderboard(league_id):
     leaderboard_data = None if force_refresh else database.get_cached_leaderboard(league_id)
 
     if leaderboard_data is None or force_refresh:
-        # Only update latest round instead of scraping all
         current_round_info = None
         rounds = database.get_cached_rounds(league_id)
         if not rounds:
@@ -186,23 +188,9 @@ def show_leaderboard(league_id):
                 if scraped:
                     database.cache_matches(league_id, current_round_info['url'], scraped)
         all_matches = database.get_all_matches_for_league(league_id)
-        leaderboard_data = calculate_leaderboard(all_matches)
+        leaderboard_data = calculate_leaderboard(all_matches, league_id)
         if leaderboard_data:
             database.cache_leaderboard(league_id, leaderboard_data)
-
-    # Ensure leaderboard has css_class keys if loaded from cache
-    for i, team in enumerate(leaderboard_data):
-        if 'css_class' not in team:
-            team['css_class'] = ''
-    if leaderboard_data:
-        if len(leaderboard_data) >= 2:
-            if league_id == 'liga_a':
-                leaderboard_data[-1]['css_class'] = 'last-place'
-                leaderboard_data[-2]['css_class'] = 'last-place'
-                leaderboard_data[0]['css_class'] = 'top-place'
-            elif league_id == 'liga_b':
-                leaderboard_data[0]['css_class'] = 'top-place'
-                leaderboard_data[1]['css_class'] = 'top-place'
 
     return render_template('leaderboard.html',
                            leaderboard_data=leaderboard_data,
