@@ -6,3 +6,11 @@ psycopg2-binary
 python-dotenv
 flask_compress
 flask_caching
+fastapi
+uvicorn
+httpx
+asyncpg
+jinja2
+redis
+json
+hashlib

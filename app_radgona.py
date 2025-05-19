@@ -6,10 +6,25 @@ from datetime import datetime
 from urllib.parse import urljoin
 from collections import defaultdict
 import database
+import os
+import hashlib
+import json
 
 app = Flask(__name__)
 Compress(app)
-cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache'})
+
+
+def leaderboard_matches_hash(matches):
+    if not matches:
+        return ''
+    return hashlib.sha256(json.dumps(matches, sort_keys=True, default=str).encode()).hexdigest()
+
+# Use Redis for cache if available, else fallback to SimpleCache
+cache_config = {
+    'CACHE_TYPE': 'RedisCache' if os.environ.get('REDIS_URL') else 'SimpleCache',
+    'CACHE_REDIS_URL': os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+}
+cache = Cache(app, config=cache_config)
 
 database.init_db_pool()
 database.init_db()
@@ -74,25 +89,20 @@ def calculate_leaderboard(all_matches_for_league, league_id):
     for team, stats in team_stats.items():
         stats['goal_difference'] = stats['goals_for'] - stats['goals_against']
         leaderboard.append(stats)
-    leaderboard.sort(key=lambda x: x['name'])
-    leaderboard.sort(key=lambda x: (x['points'], x['goal_difference'], x['goals_for']), reverse=True)
+    # Sort once by all criteria
+    leaderboard.sort(key=lambda x: (x['points'], x['goal_difference'], x['goals_for'], x['name']), reverse=True)
 
-    for i, team in enumerate(leaderboard):
+    # CSS class assignment (cleaned)
+    for team in leaderboard:
         team['css_class'] = ''
     if leaderboard:
-        if league_id == 'liga_a':
-            if len(leaderboard) >= 1:
-                leaderboard[0]['css_class'] = 'top-place'
-            if len(leaderboard) >= 2:
+        leaderboard[0]['css_class'] = 'top-place'
+        if league_id == 'liga_a' and len(leaderboard) > 1:
+            leaderboard[-1]['css_class'] = 'last-place'
+            if len(leaderboard) > 2:
                 leaderboard[-2]['css_class'] = 'last-place'
-            if len(leaderboard) >= 1:
-                leaderboard[-1]['css_class'] = 'last-place'
-        elif league_id == 'liga_b':
-            if len(leaderboard) >= 1:
-                leaderboard[0]['css_class'] = 'top-place'
-            if len(leaderboard) >= 2:
-                leaderboard[1]['css_class'] = 'top-place'
-
+        elif league_id == 'liga_b' and len(leaderboard) > 1:
+            leaderboard[1]['css_class'] = 'top-place'
     return leaderboard
 
 @app.route('/')
@@ -108,6 +118,7 @@ def show_league_results(league_id):
     league_config = LEAGUES_CONFIG[league_id]
     target_round_url = league_config["main_results_page_url"]
 
+    # POST > prefer user form; else GET arg
     if request.method == 'POST' and request.form.get('league_id_form_field') == league_id:
         form_selected_url = request.form.get('round_select_url')
         if form_selected_url:
@@ -164,7 +175,7 @@ def show_league_results(league_id):
                            today_date=datetime.now().date(),
                            current_league_id=league_id)
 
-@cache.cached(timeout=300)
+@cache.cached(timeout=300, key_prefix=lambda: f'leaderboard_{league_id}_{leaderboard_matches_hash(database.get_all_matches_for_league(league_id))}')
 @app.route('/league/<league_id>/leaderboard')
 def show_leaderboard(league_id):
     if league_id not in LEAGUES_CONFIG:
@@ -174,8 +185,8 @@ def show_leaderboard(league_id):
     leaderboard_data = None if force_refresh else database.get_cached_leaderboard(league_id)
 
     if leaderboard_data is None or force_refresh:
-        current_round_info = None
         rounds = database.get_cached_rounds(league_id)
+        current_round_info = None
         if not rounds:
             _, _, rounds, current_round_info = fetch_lmn_radgona_data(
                 LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False)
@@ -187,7 +198,10 @@ def show_leaderboard(league_id):
                 scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False)
                 if scraped:
                     database.cache_matches(league_id, current_round_info['url'], scraped)
-        all_matches = database.get_all_matches_for_league(league_id)
+        # Parallel scrape all rounds for leaderboard
+        _, all_matches, _, _ = fetch_lmn_radgona_data(
+            LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True)
+        all_matches = all_matches or database.get_all_matches_for_league(league_id)
         leaderboard_data = calculate_leaderboard(all_matches, league_id)
         if leaderboard_data:
             database.cache_leaderboard(league_id, leaderboard_data)

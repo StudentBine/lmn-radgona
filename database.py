@@ -142,23 +142,27 @@ def cache_matches(league_id, round_url, matches_data):
         return
     now = datetime.now()
     with db_cursor() as cursor:
+        params = []
         for match in matches_data:
             date_obj_val = match['date_obj'] if match['date_obj'] else None
             match_unique_id = f"{league_id}_{match['home_team']}_{match['away_team']}_{match.get('round_name', 'unknownround')}_{match.get('date_str', 'nodate')}"
-            cursor.execute('''
-                INSERT INTO matches 
-                (match_unique_id, league_id, round_name, round_url, date_str, date_obj, time, home_team, away_team, score_str, venue, last_scraped)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (match_unique_id) DO UPDATE SET
-                    score_str = EXCLUDED.score_str,
-                    last_scraped = EXCLUDED.last_scraped
-            ''', (
+            params.append((
                 match_unique_id, league_id, match.get('round_name'), round_url,
                 match['date_str'], date_obj_val, match['time'],
                 match['home_team'], match['away_team'], match['score_str'],
                 match['venue'], now
             ))
+        cursor.executemany('''
+            INSERT INTO matches 
+            (match_unique_id, league_id, round_name, round_url, date_str, date_obj, time, home_team, away_team, score_str, venue, last_scraped)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (match_unique_id) DO UPDATE SET
+                score_str = EXCLUDED.score_str,
+                last_scraped = EXCLUDED.last_scraped
+        ''', params)
     print(f"Cached {len(matches_data)} matches for round URL: {round_url}")
+
+
 
 def get_all_matches_for_league(league_id):
     with db_cursor() as cursor:
