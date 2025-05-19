@@ -197,6 +197,7 @@ body {
 @media (max-width: 768px) {
     .match-card {
         border-radius: 10px;
+        border-left: none;
     }
     
     .match-time, .match-venue {
