@@ -12,5 +12,3 @@ httpx
 asyncpg
 jinja2
 redis
-json
-hashlib
