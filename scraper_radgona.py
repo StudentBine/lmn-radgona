@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+import os
 from urllib.parse import urljoin
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
