@@ -137,6 +137,12 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNavLeagues">
                 <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('home') }}">
+                            <i class="fas fa-home me-1"></i> Domov
+                        </a>
+                    </li>
+
                     {% for league_key, league_info in leagues.items() %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle {% if league_key == current_league_id %}active fw-bold{% endif %}"

@@ -107,7 +107,8 @@ def calculate_leaderboard(all_matches_for_league, league_id):
 
 @app.route('/')
 def index():
-    return redirect(url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID))
+    return redirect(url_for('home'))
+
 
 @cache.cached(timeout=300, query_string=True)
 @app.route('/league/<league_id>/results', methods=['GET', 'POST'])
@@ -212,6 +213,12 @@ def show_leaderboard(league_id):
                            page_title_section="Lestvica",
                            current_league_id=league_id,
                            source_url_for_data=LEAGUES_CONFIG[league_id]['main_results_page_url'])
+
+
+@app.route('/home')
+def home():
+    return render_template('home.html')
+
 
 if __name__ == '__main__':
     database.init_db_pool()
