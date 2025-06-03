@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+from lxml import html
 import re
 import os
 from urllib.parse import urljoin
@@ -93,8 +94,25 @@ def _parse_matches_from_soup(soup_obj, round_name_for_match="N/A", round_url_sou
             cells = row.find_all('td', recursive=False)
             if len(cells) >= 10:
                 try:
-                    match_time_abbr = cells[1].find('abbr', class_='dtstart')
-                    match_time = match_time_abbr.get_text(strip=True) if match_time_abbr else "N/A"
+                    # Nova verzija – pobere <span> iz .time-container
+                    # Try original method first
+                    match_time = "N/A"
+                    match_time_container = cells[1].find('div', class_='time-container')
+                    match_time_span = match_time_container.find('span') if match_time_container else None
+                    if match_time_span:
+                        match_time = match_time_span.get_text(strip=True)
+                    else:
+                        # Try XPath method as fallback
+                        try:
+                            from lxml import html
+                            lxml_tree = html.fromstring(str(cells[1]))
+                            abbr_time = lxml_tree.xpath('//abbr/text()')
+                            if abbr_time:
+                                match_time = abbr_time[0].strip()
+                        except Exception as e_xpath:
+                            print(f"[XPath fallback error] Could not extract abbr time: {e_xpath}")
+
+
                     home_team_span = cells[3].find('span')
                     home_team = home_team_span.get_text(strip=True) if home_team_span else "N/A"
                     score_cell_link = cells[5].find('a')

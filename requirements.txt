@@ -12,3 +12,4 @@ httpx
 asyncpg
 jinja2
 redis
+lxml
