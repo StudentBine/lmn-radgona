@@ -215,13 +215,14 @@
             animation: fadeIn 0.5s ease forwards;
         }
 
-        /* Mobile Sticky Columns - Enhanced Compatibility */
+        /* Mobile Fixed Columns - JavaScript Enhanced */
         @media (max-width: 768px) {
             .table-responsive {
                 border-radius: 8px;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
+                position: relative;
             }
 
             .leaderboard-table {
@@ -230,38 +231,45 @@
                 position: relative;
             }
 
-            /* Sticky columns with enhanced compatibility */
+            /* Fixed columns styling - will be positioned via JavaScript */
             .leaderboard-table .rank-col {
-                position: -webkit-sticky;
-                position: sticky;
-                left: 0;
                 width: 50px;
                 min-width: 50px;
                 max-width: 50px;
                 background: white;
-                border-right: 1px solid #dee2e6;
+                border-right: 2px solid #dee2e6;
                 text-align: center;
                 font-weight: 600;
-                z-index: 10;
                 box-sizing: border-box;
+                transition: transform 0.1s ease;
             }
 
             .leaderboard-table .team-col {
-                position: -webkit-sticky;
-                position: sticky;
-                left: 50px;
                 width: 150px;
                 min-width: 150px;
                 max-width: 150px;
                 background: white;
-                border-right: 1px solid #dee2e6;
+                border-right: 2px solid #dee2e6;
                 font-weight: 500;
-                z-index: 10;
                 padding: 0.5rem 0.4rem;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 box-sizing: border-box;
+                transition: transform 0.1s ease;
+            }
+
+            /* Fixed columns when scrolled */
+            .leaderboard-table .rank-col.fixed {
+                position: fixed;
+                z-index: 1000;
+                box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+            }
+
+            .leaderboard-table .team-col.fixed {
+                position: fixed;
+                z-index: 999;
+                box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
             }
 
             /* Header styling */
@@ -447,11 +455,78 @@
                 row.style.visibility = 'visible';
             });
 
-            // Mobile sticky columns enhancement
+            // Enhanced mobile sticky columns with JavaScript fallback
             const tableContainer = document.querySelector('.table-responsive');
+            const table = document.querySelector('.leaderboard-table');
 
-            if (tableContainer && window.innerWidth <= 768) {
-                // Add subtle scroll hint
+            if (tableContainer && table && window.innerWidth <= 768) {
+                const rankCols = document.querySelectorAll('.rank-col');
+                const teamCols = document.querySelectorAll('.team-col');
+
+                // Test if sticky positioning works
+                const testElement = document.createElement('div');
+                testElement.style.position = 'sticky';
+                const stickySupported = testElement.style.position === 'sticky';
+
+                if (!stickySupported) {
+                    // JavaScript fallback for devices that don't support sticky
+                    const containerRect = tableContainer.getBoundingClientRect();
+
+                    function updateFixedColumns() {
+                        const scrollLeft = tableContainer.scrollLeft;
+                        const containerTop = containerRect.top + window.scrollY;
+
+                        rankCols.forEach(col => {
+                            if (scrollLeft > 5) {
+                                col.style.position = 'absolute';
+                                col.style.left = scrollLeft + 'px';
+                                col.style.zIndex = '1000';
+                                col.style.boxShadow = '2px 0 5px rgba(0,0,0,0.15)';
+                            } else {
+                                col.style.position = 'static';
+                                col.style.boxShadow = 'none';
+                            }
+                        });
+
+                        teamCols.forEach(col => {
+                            if (scrollLeft > 5) {
+                                col.style.position = 'absolute';
+                                col.style.left = (scrollLeft + 50) + 'px';
+                                col.style.zIndex = '999';
+                                col.style.boxShadow = '2px 0 5px rgba(0,0,0,0.15)';
+                            } else {
+                                col.style.position = 'static';
+                                col.style.boxShadow = 'none';
+                            }
+                        });
+                    }
+
+                    tableContainer.addEventListener('scroll', updateFixedColumns);
+                } else {
+                    // Use CSS sticky positioning with enhanced effects
+                    rankCols.forEach(col => {
+                        col.style.position = 'sticky';
+                        col.style.left = '0';
+                        col.style.zIndex = '10';
+                    });
+
+                    teamCols.forEach(col => {
+                        col.style.position = 'sticky';
+                        col.style.left = '50px';
+                        col.style.zIndex = '10';
+                    });
+
+                    tableContainer.addEventListener('scroll', function () {
+                        const scrollLeft = this.scrollLeft;
+                        const shadow = scrollLeft > 5 ? '2px 0 5px rgba(0,0,0,0.15)' : 'none';
+
+                        [...rankCols, ...teamCols].forEach(col => {
+                            col.style.boxShadow = shadow;
+                        });
+                    });
+                }
+
+                // Add scroll hint
                 const scrollHint = document.createElement('div');
                 scrollHint.innerHTML = '← Povlecite za več podatkov →';
                 scrollHint.style.cssText = `
@@ -464,41 +539,15 @@
                     border-radius: 20px;
                     font-size: 11px;
                     z-index: 5;
-                    transition: all 0.3s ease;
+                    transition: opacity 0.3s ease;
                     pointer-events: none;
                     font-weight: 500;
                 `;
 
-                tableContainer.style.position = 'relative';
                 tableContainer.appendChild(scrollHint);
 
-                // Auto-hide hint after scroll or time
-                let hideTimeout = setTimeout(() => {
-                    scrollHint.style.opacity = '0';
-                }, 3000);
-
-                tableContainer.addEventListener('scroll', function () {
-                    clearTimeout(hideTimeout);
-                    scrollHint.style.opacity = '0';
-                }, { once: true });
-
-                // Smooth shadow effect for sticky columns during scroll
-                tableContainer.addEventListener('scroll', function () {
-                    const rankCols = document.querySelectorAll('.rank-col');
-                    const teamCols = document.querySelectorAll('.team-col');
-                    const scrollLeft = this.scrollLeft;
-
-                    const shadowIntensity = Math.min(scrollLeft / 50, 1);
-                    const shadow = `2px 0 ${4 + shadowIntensity * 4}px rgba(0,0,0,${0.1 + shadowIntensity * 0.1})`;
-
-                    [...rankCols, ...teamCols].forEach(col => {
-                        if (scrollLeft > 2) {
-                            col.style.boxShadow = shadow;
-                        } else {
-                            col.style.boxShadow = 'none';
-                        }
-                    });
-                });
+                setTimeout(() => scrollHint.style.opacity = '0', 3000);
+                tableContainer.addEventListener('scroll', () => scrollHint.style.opacity = '0', { once: true });
             }
         });
     </script>
