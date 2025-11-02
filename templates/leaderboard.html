@@ -231,7 +231,7 @@
                 position: relative;
             }
 
-            /* Fixed columns styling - will be positioned via JavaScript */
+            /* Smooth transform-based sticky columns */
             .leaderboard-table .rank-col {
                 width: 50px;
                 min-width: 50px;
@@ -241,7 +241,11 @@
                 text-align: center;
                 font-weight: 600;
                 box-sizing: border-box;
-                transition: transform 0.1s ease;
+                z-index: 10;
+                will-change: transform;
+                backface-visibility: hidden;
+                transform: translateZ(0);
+                transition: box-shadow 0.2s ease;
             }
 
             .leaderboard-table .team-col {
@@ -256,7 +260,11 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 box-sizing: border-box;
-                transition: transform 0.1s ease;
+                z-index: 10;
+                will-change: transform;
+                backface-visibility: hidden;
+                transform: translateZ(0);
+                transition: box-shadow 0.2s ease;
             }
 
             /* Fixed columns when scrolled */
@@ -463,45 +471,55 @@
                 const rankCols = document.querySelectorAll('.rank-col');
                 const teamCols = document.querySelectorAll('.team-col');
 
-                // Test if sticky positioning works
-                const testElement = document.createElement('div');
-                testElement.style.position = 'sticky';
-                const stickySupported = testElement.style.position === 'sticky';
+                // Detect iOS Safari (sticky positioning often fails there)
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                const isSafari = /Safari/.test(navigator.userAgent) && /Apple Computer/.test(navigator.vendor);
 
-                if (!stickySupported) {
-                    // JavaScript fallback for devices that don't support sticky
-                    const containerRect = tableContainer.getBoundingClientRect();
+                // Force JavaScript approach for iOS/Safari or if sticky not supported
+                const useJavaScript = isIOS || isSafari;
+                console.log('Device detection:', { isIOS, isSafari, useJavaScript });
 
-                    function updateFixedColumns() {
-                        const scrollLeft = tableContainer.scrollLeft;
-                        const containerTop = containerRect.top + window.scrollY;
+                if (useJavaScript) {
+                    // Elegant sticky solution - transform original columns
+                    console.log('Using transform-based sticky for iOS');
 
-                        rankCols.forEach(col => {
-                            if (scrollLeft > 5) {
-                                col.style.position = 'absolute';
-                                col.style.left = scrollLeft + 'px';
-                                col.style.zIndex = '1000';
-                                col.style.boxShadow = '2px 0 5px rgba(0,0,0,0.15)';
-                            } else {
-                                col.style.position = 'static';
-                                col.style.boxShadow = 'none';
+                    let lastScrollLeft = 0;
+                    let rafId = null;
+
+                    function applyStickyTransform() {
+                        if (rafId) return;
+
+                        rafId = requestAnimationFrame(() => {
+                            const scrollLeft = tableContainer.scrollLeft;
+
+                            // Only update if scroll position changed
+                            if (scrollLeft === lastScrollLeft) {
+                                rafId = null;
+                                return;
                             }
-                        });
 
-                        teamCols.forEach(col => {
-                            if (scrollLeft > 5) {
-                                col.style.position = 'absolute';
-                                col.style.left = (scrollLeft + 50) + 'px';
-                                col.style.zIndex = '999';
-                                col.style.boxShadow = '2px 0 5px rgba(0,0,0,0.15)';
-                            } else {
-                                col.style.position = 'static';
-                                col.style.boxShadow = 'none';
-                            }
+                            lastScrollLeft = scrollLeft;
+                            const translateX = Math.max(0, scrollLeft);
+
+                            // Transform original columns to stick position
+                            rankCols.forEach(col => {
+                                col.style.transform = `translateX(${translateX}px)`;
+                                col.style.zIndex = scrollLeft > 5 ? '1000' : '10';
+                                col.style.boxShadow = scrollLeft > 5 ? '2px 0 8px rgba(0,0,0,0.15)' : 'none';
+                            });
+
+                            teamCols.forEach(col => {
+                                col.style.transform = `translateX(${translateX}px)`;
+                                col.style.zIndex = scrollLeft > 5 ? '999' : '10';
+                                col.style.boxShadow = scrollLeft > 5 ? '2px 0 8px rgba(0,0,0,0.15)' : 'none';
+                            });
+
+                            rafId = null;
                         });
                     }
 
-                    tableContainer.addEventListener('scroll', updateFixedColumns);
+                    // Event listeners for smooth sticky transform
+                    tableContainer.addEventListener('scroll', applyStickyTransform, { passive: true });
                 } else {
                     // Use CSS sticky positioning with enhanced effects
                     rankCols.forEach(col => {
