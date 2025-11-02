@@ -18,6 +18,7 @@
             background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
             color: white;
         }
+
         body {
             background-color: var(--light-bg);
             font-family: 'Roboto', sans-serif;
@@ -96,43 +97,297 @@
                 margin-bottom: 1rem;
             }
         }
+
+        /* Enhanced styling */
+        body {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-wrapper {
+            flex: 1;
+        }
+
+        .stats-section {
+            padding: 4rem 0;
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-card .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-card h3 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .leagues-section {
+            padding: 4rem 0;
+        }
+
+        .league-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .league-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        }
+
+        .features-section {
+            padding: 4rem 0;
+            background: rgba(var(--bs-primary-rgb), 0.05);
+        }
+
+        .feature-item {
+            text-align: center;
+            padding: 2rem 1rem;
+        }
+
+        .feature-item i {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .footer {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #2a5298 100%) !important;
+            color: white;
+            padding: 2rem 0;
+            margin-top: auto;
+        }
+
+        @media (max-width: 768px) {
+            .stat-card {
+                margin-bottom: 2rem;
+            }
+
+            .stats-section,
+            .leagues-section,
+            .features-section {
+                padding: 2rem 0;
+            }
+        }
     </style>
 </head>
 
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark" style="background: var(--primary-color);">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('home') }}">
-                <i class="fas fa-futbol"></i> LMN Radgona
-            </a>
-        </div>
-    </nav>
-
-    <section class="hero">
-        <div class="container">
-            <h1>Dobrodošli na LMN Radgona</h1>
-            <p>Neuradna platforma za pregled rezultatov in lestvic lig malega nogometa v Radgoni.</p>
-            <div class="d-grid gap-3 d-md-flex justify-content-center">
-                <a href="{{ url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID) }}" class="btn btn-light">
-                    <i class="fas fa-list-ol me-1"></i> Rezultati
-                </a>
-                <a href="{{ url_for('show_leaderboard', league_id=DEFAULT_LEAGUE_ID) }}" class="btn btn-outline-light">
-                    <i class="fas fa-medal me-1"></i> Lestvica
+    <div class="main-wrapper">
+        <nav class="navbar navbar-expand-lg navbar-dark" style="background: var(--primary-color);">
+            <div class="container">
+                <a class="navbar-brand" href="{{ url_for('home') }}">
+                    <i class="fas fa-futbol"></i> LMN Radgona
                 </a>
             </div>
-        </div>
-    </section>
+        </nav>
 
-    <footer class="footer bg-dark mt-5 py-4 text-center">
+        <section class="hero">
+            <div class="container">
+                <h1>Dobrodošli na LMN Radgona</h1>
+                <p>Platforma za pregled rezultatov in lestvic lig malega nogometa v Gornji Radgoni.</p>
+                <div class="d-grid gap-3 d-md-flex justify-content-center">
+                    <a href="{{ url_for('show_league_results', league_id=DEFAULT_LEAGUE_ID) }}"
+                        class="btn btn-light btn-lg">
+                        <i class="fas fa-list-ol me-2"></i> Rezultati
+                    </a>
+                    <a href="{{ url_for('show_leaderboard', league_id=DEFAULT_LEAGUE_ID) }}"
+                        class="btn btn-outline-light btn-lg">
+                        <i class="fas fa-medal me-2"></i> Lestvica
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Statistics Section -->
+        <section class="stats-section">
+            <div class="container">
+                <div class="text-center mb-5">
+                    <h2 class="fw-bold">Statistike sezone</h2>
+                    <p class="text-muted">Pregled trenutne sezone malega nogometa</p>
+                </div>
+                <div class="row g-4">
+                    <div class="col-md-3 col-sm-6">
+                        <div class="stat-card">
+                            <i class="fas fa-users icon"></i>
+                            <h3>{{ leagues | length }}</h3>
+                            <p class="mb-0">Aktivni ligi</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="stat-card">
+                            <i class="fas fa-futbol icon"></i>
+                            <h3>28+</h3>
+                            <p class="mb-0">Registriranih ekip</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="stat-card">
+                            <i class="fas fa-calendar-alt icon"></i>
+                            <h3>150+</h3>
+                            <p class="mb-0">Odigranih tekem</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="stat-card">
+                            <i class="fas fa-trophy icon"></i>
+                            <h3>{{ current_year }}</h3>
+                            <p class="mb-0">Sezona</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Leagues Section -->
+        <section class="leagues-section">
+            <div class="container">
+                <div class="text-center mb-5">
+                    <h2 class="fw-bold">Naše lige</h2>
+                    <p class="text-muted">Pregled vseh aktivnih lig v sezoni</p>
+                </div>
+                <div class="row g-4">
+                    {% for league_key, league_info in leagues.items() %}
+                    <div class="col-md-6">
+                        <div class="league-card">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold mb-0">
+                                    <i class="fas fa-trophy text-warning me-2"></i>
+                                    {{ league_info.display_name }}
+                                </h5>
+                                <span class="badge bg-primary">Aktivna</span>
+                            </div>
+                            <p class="text-muted mb-3">Spremljaj rezultate in lestvico te lige</p>
+                            <div class="d-grid gap-2 d-md-flex">
+                                <a href="{{ url_for('show_league_results', league_id=league_key) }}"
+                                    class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-list me-1"></i> Rezultati
+                                </a>
+                                <a href="{{ url_for('show_leaderboard', league_id=league_key) }}"
+                                    class="btn btn-primary btn-sm">
+                                    <i class="fas fa-medal me-1"></i> Lestvica
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section class="features-section">
+            <div class="container">
+                <div class="text-center mb-5">
+                    <h2 class="fw-bold">Zakaj naša platforma?</h2>
+                    <p class="text-muted">Vse kar potrebujete za spremljanje malega nogometa</p>
+                </div>
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="feature-item">
+                            <i class="fas fa-mobile-alt"></i>
+                            <h5 class="fw-bold">Mobilno prijazen</h5>
+                            <p class="text-muted">Optimiziran za pametne telefone in tablice</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="feature-item">
+                            <i class="fas fa-sync-alt"></i>
+                            <h5 class="fw-bold">Redno posodabljanje</h5>
+                            <p class="text-muted">Rezultati se posodabljajo po vsaki odigrani tekmi</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="feature-item">
+                            <i class="fas fa-chart-line"></i>
+                            <h5 class="fw-bold">Detaljne statistike</h5>
+                            <p class="text-muted">Pregled vseh pomembnih podatkov o ekipah</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer class="footer text-center">
         <div class="container">
             <p class="mb-2">Podatki pridobljeni iz: <a href="https://www.lmn-radgona.si/" target="_blank"
                     class="text-decoration-underline">LMN Radgona</a></p>
-            <p class="mb-0">© <span id="current_year"></span> LMN Radgona Rezultati (neuradno).</p>
+            <p class="mb-0">© <span id="current_year"></span> LMN Radgona </p>
         </div>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.getElementById('current_year').textContent = new Date().getFullYear();
+
+        // Set current year for stats card
+        const currentYear = new Date().getFullYear();
+        const yearElements = document.querySelectorAll('.stat-card h3');
+        yearElements[3].textContent = currentYear;
+
+        // Add smooth scroll behavior
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+
+        // Add animation on scroll for stat cards
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        // Observe all stat cards and feature items
+        document.querySelectorAll('.stat-card, .league-card, .feature-item').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(el);
+        });
     </script>
 </body>
 

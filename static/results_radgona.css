@@ -172,10 +172,10 @@ body {
 .footer {
     border-top: 1px solid rgba(0, 0, 0, 0.08);
     padding: 2rem 0;
-    margin-top: 4rem;
+    /* margin-top: 4rem; */
     font-size: 0.9em;
     color: #6c757d;
-    background-color: white;
+    /* background-color: white; */
 }
 
 .no-results {
