@@ -192,6 +192,29 @@ def cache_leaderboard(league_id, leaderboard_data):
         ''', (league_id, json.dumps(leaderboard_data), datetime.now()))
     print(f"Cached leaderboard for {league_id}")
 
+def clear_league_cache(league_id):
+    """Clear all cached data for a specific league"""
+    with db_cursor() as cursor:
+        # Clear rounds cache
+        cursor.execute("DELETE FROM leagues_meta WHERE league_id = %s", (league_id,))
+        # Clear matches cache  
+        cursor.execute("DELETE FROM matches WHERE league_id = %s", (league_id,))
+        # Clear leaderboard cache
+        cursor.execute("DELETE FROM calculated_leaderboards WHERE league_id = %s", (league_id,))
+    print(f"Cleared all cache for league: {league_id}")
+
+def get_all_teams_for_league(league_id):
+    """Get all unique team names that appear in matches for a league"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT DISTINCT home_team as team FROM matches WHERE league_id = %s
+            UNION
+            SELECT DISTINCT away_team as team FROM matches WHERE league_id = %s
+            ORDER BY team
+        """, (league_id, league_id))
+        teams = [row['team'] for row in cursor.fetchall()]
+    return teams
+
 if __name__ == '__main__':
     init_db_pool()
     init_db()

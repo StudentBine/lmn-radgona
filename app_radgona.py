@@ -71,15 +71,62 @@ def inject_global_vars():
     )
 
 def calculate_leaderboard(all_matches_for_league, league_id):
-    if not all_matches_for_league:
-        return []
+    # Definirajmo vse ekipe za vsako ligo (na podlagi originalne strani)
+    ALL_TEAMS = {
+        'liga_a': [
+            'Spodnja Ščavnica', 'Tiha voda', 'Lokavec', 'Podgrad', 'Plitvica', 
+            'Negova', 'Očeslavci', 'Stari hrast', 'Baren', 'Radenska', 
+            'Kapela', 'Ivanjševska slatina', 'Dinamo Radgona', 'Lešane'
+        ],
+        'liga_b': [
+            'Ihova', 'Grabonoš', 'Police', 'Bumefekt', 'Mahovci', 'Šenekar',
+            'Stavešinci', 'Segovci', 'Vrabel', 'Zoro', 'Hrastko', 'Porkys', 'Črešnjevci'
+        ]
+    }
+    
     team_stats = defaultdict(lambda: {'played': 0, 'won': 0, 'drawn': 0, 'lost': 0,
                                       'goals_for': 0, 'goals_against': 0, 'goal_difference': 0,
                                       'points': 0, 'name': '', 'css_class': ''})
+    
+    # Mapiranje imen (scraped imena -> standardna imena)
+    NAME_MAPPING = {
+        'liga_a': {
+            'Sp. Ščavnica': 'Spodnja Ščavnica',
+            'Dinamo': 'Dinamo Radgona',
+            # Dodajte druge preslikave po potrebi
+        },
+        'liga_b': {
+            # Dodajte preslikave za Liga B po potrebi
+        }
+    }
+    
+    # Inicializiraj vse ekipe za to ligo z 0 vrednostmi
+    if league_id in ALL_TEAMS:
+        for team_name in ALL_TEAMS[league_id]:
+            team_stats[team_name]['name'] = team_name
+    
+    if not all_matches_for_league:
+        # Vrni vse ekipe z 0 vrednostmi, če ni tekem
+        return [stats for stats in team_stats.values()]
     for match in all_matches_for_league:
-        home = match['home_team']
-        away = match['away_team']
+        home_raw = match['home_team']
+        away_raw = match['away_team']
         score_str = match['score_str']
+        
+        # Mapiraj imena ekip na standardna imena
+        home = NAME_MAPPING.get(league_id, {}).get(home_raw, home_raw)
+        away = NAME_MAPPING.get(league_id, {}).get(away_raw, away_raw)
+        
+        # Preveri, ali sta ekipi v seznamu veljavnih ekip za to ligo
+        if league_id in ALL_TEAMS:
+            if home not in ALL_TEAMS[league_id]:
+                logger.warning(f"Neznana ekipa v {league_id}: {home} (original: {home_raw})")
+                continue
+            if away not in ALL_TEAMS[league_id]:
+                logger.warning(f"Neznana ekipa v {league_id}: {away} (original: {away_raw})")
+                continue
+        
+        # Nastavi ime ekipe če še ni nastavljeno
         if not team_stats[home]['name']:
             team_stats[home]['name'] = home
         if not team_stats[away]['name']:
@@ -118,11 +165,14 @@ def calculate_leaderboard(all_matches_for_league, league_id):
     if leaderboard:
         leaderboard[0]['css_class'] = 'top-place'
         if league_id == 'liga_a' and len(leaderboard) > 1:
+            # Liga A: zadnja dva mesta označena kot izpadla
             leaderboard[-1]['css_class'] = 'last-place'
             if len(leaderboard) > 2:
                 leaderboard[-2]['css_class'] = 'last-place'
         elif league_id == 'liga_b' and len(leaderboard) > 1:
-            leaderboard[1]['css_class'] = 'top-place'
+            # Liga B: prvo in drugo mesto označeno za napredovanje  
+            if len(leaderboard) > 1:
+                leaderboard[1]['css_class'] = 'top-place'
     return leaderboard
 
 @app.route('/')
@@ -153,14 +203,14 @@ def show_league_results(league_id):
 
         if not available_rounds:
             _, _, scraped_rounds, scraped_initial = fetch_lmn_radgona_data(
-                league_config["main_results_page_url"], fetch_all_rounds_data=False)
+                league_config["main_results_page_url"], fetch_all_rounds_data=False, league_id_for_caching=league_id)
             if scraped_rounds:
                 available_rounds = scraped_rounds
                 initial_page_round_info = scraped_initial
                 database.cache_rounds(league_id, scraped_rounds)
         else:
             if target_round_url == league_config["main_results_page_url"]:
-                _, _, _, temp_initial = fetch_lmn_radgona_data(league_config["main_results_page_url"], False)
+                _, _, _, temp_initial = fetch_lmn_radgona_data(league_config["main_results_page_url"], False, league_id_for_caching=league_id)
                 initial_page_round_info = temp_initial
 
         if target_round_url == league_config["main_results_page_url"] and initial_page_round_info and initial_page_round_info.get('url'):
@@ -171,7 +221,7 @@ def show_league_results(league_id):
 
         if page_matches is None:
             scraped_matches, _, _, scraped_round_info = fetch_lmn_radgona_data(
-                target_round_url, fetch_all_rounds_data=False)
+                target_round_url, fetch_all_rounds_data=False, league_id_for_caching=league_id)
             if scraped_matches:
                 database.cache_matches(league_id, target_round_url, scraped_matches)
                 page_matches = scraped_matches
@@ -207,13 +257,18 @@ def show_league_results(league_id):
             return f"<h1>Napaka pri pridobivanju rezultatov</h1><p>Koda napake: 500</p><p><a href='/'>Nazaj na domačo stran</a></p>", 500
 
 @app.route('/league/<league_id>/leaderboard')
-@cache.cached(timeout=300, key_prefix='leaderboard')
 def show_leaderboard(league_id):
     try:
         if league_id not in LEAGUES_CONFIG:
             return redirect(url_for('show_leaderboard', league_id=DEFAULT_LEAGUE_ID))
 
         force_refresh = request.args.get('force', 'false').lower() == 'true'
+        clear_cache_param = request.args.get('clear_cache', 'false').lower() == 'true'
+        
+        if clear_cache_param:
+            database.clear_league_cache(league_id)
+            cache.clear()
+            logger.info(f"Cache cleared for {league_id}")
         leaderboard_data = None if force_refresh else database.get_cached_leaderboard(league_id)
 
         if leaderboard_data is None or force_refresh:
@@ -221,18 +276,18 @@ def show_leaderboard(league_id):
             current_round_info = None
             if not rounds:
                 _, _, rounds, current_round_info = fetch_lmn_radgona_data(
-                    LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False)
+                    LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
                 if rounds:
                     database.cache_rounds(league_id, rounds)
             if rounds:
                 current_round_info = rounds[-1] if not current_round_info else current_round_info
                 if database.get_cached_round_matches(league_id, current_round_info['url']) is None:
-                    scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False)
+                    scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
                     if scraped:
                         database.cache_matches(league_id, current_round_info['url'], scraped)
             # Parallel scrape all rounds for leaderboard
             _, all_matches, _, _ = fetch_lmn_radgona_data(
-                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True)
+                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True, league_id_for_caching=league_id)
             all_matches = all_matches or database.get_all_matches_for_league(league_id)
             leaderboard_data = calculate_leaderboard(all_matches, league_id)
             if leaderboard_data:
@@ -258,6 +313,83 @@ def show_leaderboard(league_id):
 @app.route('/home')
 def home():
     return render_template('home.html')
+
+@app.route('/admin/clear-cache/<league_id>')
+def clear_cache(league_id):
+    """Admin route to clear cache for a specific league"""
+    if league_id in LEAGUES_CONFIG:
+        try:
+            database.clear_league_cache(league_id)
+            cache.clear()  # Clear Flask cache as well
+            return f"Cache cleared for {LEAGUES_CONFIG[league_id]['name']}", 200
+        except Exception as e:
+            logger.error(f"Error clearing cache for {league_id}: {str(e)}")
+            return f"Error clearing cache: {str(e)}", 500
+    else:
+        return "Invalid league ID", 404
+
+@app.route('/admin/fix-teams/<league_id>')
+def fix_missing_teams(league_id):
+    """Admin route to ensure all teams are in leaderboard"""
+    if league_id not in LEAGUES_CONFIG:
+        return "Invalid league ID", 404
+    
+    try:
+        # Clear cache first
+        database.clear_league_cache(league_id)
+        cache.clear()
+        
+        # Force refresh leaderboard with all teams
+        all_matches = database.get_all_matches_for_league(league_id)
+        leaderboard_data = calculate_leaderboard(all_matches, league_id)
+        
+        if leaderboard_data:
+            database.cache_leaderboard(league_id, leaderboard_data)
+        
+        return f"Fixed teams for {LEAGUES_CONFIG[league_id]['name']}. Found {len(leaderboard_data)} teams.", 200
+        
+    except Exception as e:
+        logger.error(f"Error fixing teams for {league_id}: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/admin/debug')
+def debug_panel():
+    """Main debug panel"""
+    return render_template('debug.html')
+
+@app.route('/admin/debug/<league_id>')
+def debug_league(league_id):
+    """Debug route to show league data"""
+    if league_id not in LEAGUES_CONFIG:
+        return "Invalid league ID", 404
+    
+    try:
+        # Get data from database
+        all_matches = database.get_all_matches_for_league(league_id)
+        rounds = database.get_cached_rounds(league_id)
+        leaderboard = database.get_cached_leaderboard(league_id)
+        
+        # Get unique teams from database
+        teams_from_db = database.get_all_teams_for_league(league_id)
+        teams_from_matches = list(set([m['home_team'] for m in all_matches] + [m['away_team'] for m in all_matches])) if all_matches else []
+        
+        debug_info = {
+            'league_id': league_id,
+            'league_name': LEAGUES_CONFIG[league_id]['name'],
+            'total_matches': len(all_matches) if all_matches else 0,
+            'rounds_count': len(rounds) if rounds else 0,
+            'leaderboard_teams': len(leaderboard) if leaderboard else 0,
+            'sample_matches': all_matches[:3] if all_matches else [],
+            'teams_from_database': teams_from_db,
+            'teams_from_matches': teams_from_matches,
+            'expected_teams_liga_a': ['Spodnja Ščavnica', 'Tiha voda', 'Lokavec', 'Podgrad', 'Plitvica', 'Negova', 'Očeslavci', 'Stari hrast', 'Baren', 'Radenska', 'Kapela', 'Ivanjševska slatina', 'Dinamo Radgona', 'Lešane'] if league_id == 'liga_a' else [],
+            'expected_teams_liga_b': ['Ihova', 'Grabonoš', 'Police', 'Bumefekt', 'Mahovci', 'Šenekar', 'Stavešinci', 'Segovci', 'Vrabel', 'Zoro', 'Hrastko', 'Porkys', 'Črešnjevci'] if league_id == 'liga_b' else []
+        }
+        
+        return f"<pre>{json.dumps(debug_info, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        return f"Debug error: {str(e)}", 500
 
 
 if __name__ == '__main__':
