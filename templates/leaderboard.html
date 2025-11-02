@@ -215,41 +215,53 @@
             animation: fadeIn 0.5s ease forwards;
         }
 
-        /* Mobile Sticky Columns - Clean Design */
+        /* Mobile Sticky Columns - Enhanced Compatibility */
         @media (max-width: 768px) {
             .table-responsive {
                 border-radius: 8px;
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
             }
 
             .leaderboard-table {
-                min-width: 700px;
+                min-width: 750px;
                 margin: 0;
+                position: relative;
             }
 
-            /* Sticky columns with simple styling */
+            /* Sticky columns with enhanced compatibility */
             .leaderboard-table .rank-col {
+                position: -webkit-sticky;
                 position: sticky;
                 left: 0;
-                width: 45px;
-                min-width: 45px;
+                width: 50px;
+                min-width: 50px;
+                max-width: 50px;
                 background: white;
                 border-right: 1px solid #dee2e6;
                 text-align: center;
                 font-weight: 600;
                 z-index: 10;
+                box-sizing: border-box;
             }
 
             .leaderboard-table .team-col {
+                position: -webkit-sticky;
                 position: sticky;
-                left: 45px;
-                width: 130px;
-                min-width: 130px;
+                left: 50px;
+                width: 150px;
+                min-width: 150px;
+                max-width: 150px;
                 background: white;
                 border-right: 1px solid #dee2e6;
                 font-weight: 500;
                 z-index: 10;
-                padding: 0.5rem 0.3rem;
+                padding: 0.5rem 0.4rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                box-sizing: border-box;
             }
 
             /* Header styling */
@@ -290,6 +302,27 @@
                 min-width: 55px;
                 text-align: center;
                 font-weight: 700;
+            }
+        }
+
+        /* Extra compatibility for smaller phones */
+        @media (max-width: 480px) {
+            .leaderboard-table {
+                min-width: 650px;
+            }
+            
+            .leaderboard-table .rank-col {
+                width: 45px;
+                min-width: 45px;
+                max-width: 45px;
+            }
+
+            .leaderboard-table .team-col {
+                left: 45px;
+                width: 140px;
+                min-width: 140px;
+                max-width: 140px;
+                font-size: 0.85rem;
             }
         }
     </style>
