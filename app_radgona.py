@@ -10,30 +10,28 @@ import os
 import hashlib
 import json
 import logging
-from config import config
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('/var/log/lmn-radgona.log'),
-        logging.StreamHandler()
-    ]
-)
+# Configure logging - use simpler approach that works everywhere
+try:
+    # Try to log to file if possible, otherwise just console
+    log_handlers = []
+    if os.path.exists('/var/log') and os.access('/var/log', os.W_OK):
+        log_handlers.append(logging.FileHandler('/var/log/lmn-radgona.log'))
+    log_handlers.append(logging.StreamHandler())
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=log_handlers
+    )
+except:
+    # Fallback to basic console logging
+    logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
-def create_app(config_name='production'):
-    app = Flask(__name__)
-    
-    # Load configuration
-    app.config.from_object(config[config_name])
-    
-    Compress(app)
-    
-    return app
-
-app = create_app(os.environ.get('FLASK_ENV', 'production'))
+app = Flask(__name__)
+Compress(app)
 
 
 def leaderboard_matches_hash(matches):
@@ -200,47 +198,61 @@ def show_league_results(league_id):
                                current_league_id=league_id)
     except Exception as e:
         logger.error(f"Error in show_league_results for {league_id}: {str(e)}")
-        return render_template('error.html', 
-                               error_message="Napaka pri pridobivanju rezultatov", 
-                               error_code=500), 500
+        try:
+            return render_template('error.html', 
+                                   error_message="Napaka pri pridobivanju rezultatov", 
+                                   error_code=500), 500
+        except:
+            # Fallback if error.html template doesn't exist
+            return f"<h1>Napaka pri pridobivanju rezultatov</h1><p>Koda napake: 500</p><p><a href='/'>Nazaj na domačo stran</a></p>", 500
 
 @app.route('/league/<league_id>/leaderboard')
 @cache.cached(timeout=300, key_prefix='leaderboard')
 def show_leaderboard(league_id):
-    if league_id not in LEAGUES_CONFIG:
-        return redirect(url_for('show_leaderboard', league_id=DEFAULT_LEAGUE_ID))
+    try:
+        if league_id not in LEAGUES_CONFIG:
+            return redirect(url_for('show_leaderboard', league_id=DEFAULT_LEAGUE_ID))
 
-    force_refresh = request.args.get('force', 'false').lower() == 'true'
-    leaderboard_data = None if force_refresh else database.get_cached_leaderboard(league_id)
+        force_refresh = request.args.get('force', 'false').lower() == 'true'
+        leaderboard_data = None if force_refresh else database.get_cached_leaderboard(league_id)
 
-    if leaderboard_data is None or force_refresh:
-        rounds = database.get_cached_rounds(league_id)
-        current_round_info = None
-        if not rounds:
-            _, _, rounds, current_round_info = fetch_lmn_radgona_data(
-                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False)
+        if leaderboard_data is None or force_refresh:
+            rounds = database.get_cached_rounds(league_id)
+            current_round_info = None
+            if not rounds:
+                _, _, rounds, current_round_info = fetch_lmn_radgona_data(
+                    LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False)
+                if rounds:
+                    database.cache_rounds(league_id, rounds)
             if rounds:
-                database.cache_rounds(league_id, rounds)
-        if rounds:
-            current_round_info = rounds[-1] if not current_round_info else current_round_info
-            if database.get_cached_round_matches(league_id, current_round_info['url']) is None:
-                scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False)
-                if scraped:
-                    database.cache_matches(league_id, current_round_info['url'], scraped)
-        # Parallel scrape all rounds for leaderboard
-        _, all_matches, _, _ = fetch_lmn_radgona_data(
-            LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True)
-        all_matches = all_matches or database.get_all_matches_for_league(league_id)
-        leaderboard_data = calculate_leaderboard(all_matches, league_id)
-        if leaderboard_data:
-            database.cache_leaderboard(league_id, leaderboard_data)
+                current_round_info = rounds[-1] if not current_round_info else current_round_info
+                if database.get_cached_round_matches(league_id, current_round_info['url']) is None:
+                    scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False)
+                    if scraped:
+                        database.cache_matches(league_id, current_round_info['url'], scraped)
+            # Parallel scrape all rounds for leaderboard
+            _, all_matches, _, _ = fetch_lmn_radgona_data(
+                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True)
+            all_matches = all_matches or database.get_all_matches_for_league(league_id)
+            leaderboard_data = calculate_leaderboard(all_matches, league_id)
+            if leaderboard_data:
+                database.cache_leaderboard(league_id, leaderboard_data)
 
-    return render_template('leaderboard.html',
-                           leaderboard_data=leaderboard_data,
-                           page_title_main=f"LMN Radgona: {LEAGUES_CONFIG[league_id]['display_name']}",
-                           page_title_section="Lestvica",
-                           current_league_id=league_id,
-                           source_url_for_data=LEAGUES_CONFIG[league_id]['main_results_page_url'])
+        return render_template('leaderboard.html',
+                               leaderboard_data=leaderboard_data,
+                               page_title_main=f"LMN Radgona: {LEAGUES_CONFIG[league_id]['display_name']}",
+                               page_title_section="Lestvica",
+                               current_league_id=league_id,
+                               source_url_for_data=LEAGUES_CONFIG[league_id]['main_results_page_url'])
+    except Exception as e:
+        logger.error(f"Error in show_leaderboard for {league_id}: {str(e)}")
+        try:
+            return render_template('error.html', 
+                                   error_message="Napaka pri pridobivanju lestvice", 
+                                   error_code=500), 500
+        except:
+            # Fallback if error.html template doesn't exist
+            return f"<h1>Napaka pri pridobivanju lestvice</h1><p>Koda napake: 500</p><p><a href='/'>Nazaj na domačo stran</a></p>", 500
 
 
 @app.route('/home')
