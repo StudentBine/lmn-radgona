@@ -214,6 +214,84 @@
         .animate-row {
             animation: fadeIn 0.5s ease forwards;
         }
+
+        /* Mobile Sticky Columns - Clean Design */
+        @media (max-width: 768px) {
+            .table-responsive {
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+
+            .leaderboard-table {
+                min-width: 700px;
+                margin: 0;
+            }
+
+            /* Sticky columns with simple styling */
+            .leaderboard-table .rank-col {
+                position: sticky;
+                left: 0;
+                width: 45px;
+                min-width: 45px;
+                background: white;
+                border-right: 1px solid #dee2e6;
+                text-align: center;
+                font-weight: 600;
+                z-index: 10;
+            }
+
+            .leaderboard-table .team-col {
+                position: sticky;
+                left: 45px;
+                width: 130px;
+                min-width: 130px;
+                background: white;
+                border-right: 1px solid #dee2e6;
+                font-weight: 500;
+                z-index: 10;
+                padding: 0.5rem 0.3rem;
+            }
+
+            /* Header styling */
+            .leaderboard-table thead th.rank-col,
+            .leaderboard-table thead th.team-col {
+                background: var(--primary-color);
+                color: white;
+                font-weight: 600;
+                border-right: 1px solid rgba(255,255,255,0.2);
+            }
+
+            /* Row hover effects */
+            .leaderboard-table tbody tr:hover .rank-col,
+            .leaderboard-table tbody tr:hover .team-col {
+                background: #f8f9fa;
+                transition: background-color 0.2s ease;
+            }
+
+            /* Alternating row colors for sticky columns */
+            .leaderboard-table tbody tr:nth-child(odd) .rank-col,
+            .leaderboard-table tbody tr:nth-child(odd) .team-col {
+                background: #f8f9fa;
+            }
+
+            .leaderboard-table tbody tr:nth-child(odd):hover .rank-col,
+            .leaderboard-table tbody tr:nth-child(odd):hover .team-col {
+                background: #e9ecef;
+            }
+
+            /* Responsive column sizing */
+            .leaderboard-table .stats-col {
+                min-width: 40px;
+                text-align: center;
+                font-size: 0.9em;
+            }
+
+            .leaderboard-table .points-col {
+                min-width: 55px;
+                text-align: center;
+                font-weight: 700;
+            }
+        }
     </style>
 </head>
 
@@ -336,6 +414,60 @@
             rows.forEach(row => {
                 row.style.visibility = 'visible';
             });
+
+            // Mobile sticky columns enhancement
+            const tableContainer = document.querySelector('.table-responsive');
+            
+            if (tableContainer && window.innerWidth <= 768) {
+                // Add subtle scroll hint
+                const scrollHint = document.createElement('div');
+                scrollHint.innerHTML = '← Povlecite za več podatkov →';
+                scrollHint.style.cssText = `
+                    position: absolute;
+                    bottom: 10px;
+                    right: 10px;
+                    background: rgba(13, 110, 253, 0.8);
+                    color: white;
+                    padding: 6px 12px;
+                    border-radius: 20px;
+                    font-size: 11px;
+                    z-index: 5;
+                    transition: all 0.3s ease;
+                    pointer-events: none;
+                    font-weight: 500;
+                `;
+                
+                tableContainer.style.position = 'relative';
+                tableContainer.appendChild(scrollHint);
+
+                // Auto-hide hint after scroll or time
+                let hideTimeout = setTimeout(() => {
+                    scrollHint.style.opacity = '0';
+                }, 3000);
+
+                tableContainer.addEventListener('scroll', function() {
+                    clearTimeout(hideTimeout);
+                    scrollHint.style.opacity = '0';
+                }, { once: true });
+
+                // Smooth shadow effect for sticky columns during scroll
+                tableContainer.addEventListener('scroll', function() {
+                    const rankCols = document.querySelectorAll('.rank-col');
+                    const teamCols = document.querySelectorAll('.team-col');
+                    const scrollLeft = this.scrollLeft;
+                    
+                    const shadowIntensity = Math.min(scrollLeft / 50, 1);
+                    const shadow = `2px 0 ${4 + shadowIntensity * 4}px rgba(0,0,0,${0.1 + shadowIntensity * 0.1})`;
+                    
+                    [...rankCols, ...teamCols].forEach(col => {
+                        if (scrollLeft > 2) {
+                            col.style.boxShadow = shadow;
+                        } else {
+                            col.style.boxShadow = 'none';
+                        }
+                    });
+                });
+            }
         });
     </script>
 </body>
