@@ -219,7 +219,7 @@
         @media (max-width: 768px) {
             .table-responsive {
                 border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             }
 
             .leaderboard-table {
@@ -258,7 +258,7 @@
                 background: var(--primary-color);
                 color: white;
                 font-weight: 600;
-                border-right: 1px solid rgba(255,255,255,0.2);
+                border-right: 1px solid rgba(255, 255, 255, 0.2);
             }
 
             /* Row hover effects */
@@ -298,8 +298,7 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
-            <a class="navbar-brand"
-                href="{{ url_for('home') }}">
+            <a class="navbar-brand" href="{{ url_for('home') }}">
                 <i class="fas fa-futbol"></i> LMN Radgona
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavLeagues"
@@ -417,7 +416,7 @@
 
             // Mobile sticky columns enhancement
             const tableContainer = document.querySelector('.table-responsive');
-            
+
             if (tableContainer && window.innerWidth <= 768) {
                 // Add subtle scroll hint
                 const scrollHint = document.createElement('div');
@@ -436,7 +435,7 @@
                     pointer-events: none;
                     font-weight: 500;
                 `;
-                
+
                 tableContainer.style.position = 'relative';
                 tableContainer.appendChild(scrollHint);
 
@@ -445,20 +444,20 @@
                     scrollHint.style.opacity = '0';
                 }, 3000);
 
-                tableContainer.addEventListener('scroll', function() {
+                tableContainer.addEventListener('scroll', function () {
                     clearTimeout(hideTimeout);
                     scrollHint.style.opacity = '0';
                 }, { once: true });
 
                 // Smooth shadow effect for sticky columns during scroll
-                tableContainer.addEventListener('scroll', function() {
+                tableContainer.addEventListener('scroll', function () {
                     const rankCols = document.querySelectorAll('.rank-col');
                     const teamCols = document.querySelectorAll('.team-col');
                     const scrollLeft = this.scrollLeft;
-                    
+
                     const shadowIntensity = Math.min(scrollLeft / 50, 1);
                     const shadow = `2px 0 ${4 + shadowIntensity * 4}px rgba(0,0,0,${0.1 + shadowIntensity * 0.1})`;
-                    
+
                     [...rankCols, ...teamCols].forEach(col => {
                         if (scrollLeft > 2) {
                             col.style.boxShadow = shadow;
