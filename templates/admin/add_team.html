@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="sl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dodaj ekipo - Admin Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #1a3e72;
+            --secondary-color: #3a86ff;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #2a5298 100%);
+        }
+
+        .form-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            border: none;
+        }
+
+        .league-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{{ url_for('admin_dashboard') }}">
+                <i class="fas fa-shield-alt me-2"></i>Admin Panel
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    <i class="fas fa-user me-1"></i>{{ session.admin_username }}
+                </span>
+                <a href="{{ url_for('admin_dashboard') }}" class="nav-link">
+                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                </a>
+                <a href="{{ url_for('admin_logout') }}" class="nav-link">
+                    <i class="fas fa-sign-out-alt me-1"></i>Odjava
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center mb-4">
+                    <a href="{{ url_for('admin_teams') }}" class="btn btn-outline-secondary me-3">
+                        <i class="fas fa-arrow-left me-1"></i>Nazaj
+                    </a>
+                    <h2 class="fw-bold mb-0">
+                        <i class="fas fa-plus me-2 text-primary"></i>Dodaj novo ekipo
+                    </h2>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div
+                    class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                <div class="form-card">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">
+                                <i class="fas fa-shield-alt me-1"></i>Ime ekipe *
+                            </label>
+                            <input type="text" class="form-control" id="name" name="name" required minlength="2"
+                                maxlength="100" value="{{ request.form.get('name', '') }}"
+                                placeholder="Vnesi ime ekipe">
+                            <div class="form-text">Ime ekipe mora biti edinstveno</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="league_id" class="form-label">
+                                <i class="fas fa-trophy me-1"></i>Liga *
+                            </label>
+                            <select class="form-select" id="league_id" name="league_id" required>
+                                <option value="">Izberi ligo</option>
+                                <option value="liga_a" {{ 'selected' if request.form.get('league_id')=='liga_a' else ''
+                                    }}>
+                                    Liga A
+                                </option>
+                                <option value="liga_b" {{ 'selected' if request.form.get('league_id')=='liga_b' else ''
+                                    }}>
+                                    Liga B
+                                </option>
+                            </select>
+                            <div class="form-text">Izberi v katero ligo spada ekipa</div>
+                        </div>
+
+                        <!-- Liga info -->
+                        <div class="league-info" id="leagueInfo" style="display: none;">
+                            <h6><i class="fas fa-info-circle me-1"></i>Informacije o ligi</h6>
+                            <div id="ligaAInfo" style="display: none;">
+                                <p class="mb-1"><strong>Liga A:</strong> Najvišja liga LMN Radgona</p>
+                                <p class="mb-0 text-muted small">
+                                    Trenutno v ligi: <span id="ligaACount">{{ liga_a_teams|length if liga_a_teams else 0
+                                        }}</span> ekip
+                                </p>
+                            </div>
+                            <div id="ligaBInfo" style="display: none;">
+                                <p class="mb-1"><strong>Liga B:</strong> Druga liga LMN Radgona</p>
+                                <p class="mb-0 text-muted small">
+                                    Trenutno v ligi: <span id="ligaBCount">{{ liga_b_teams|length if liga_b_teams else 0
+                                        }}</span> ekip
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('admin_teams') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-1"></i>Prekliči
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>Ustvari ekipo
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.getElementById('league_id').addEventListener('change', function () {
+            const leagueInfo = document.getElementById('leagueInfo');
+            const ligaAInfo = document.getElementById('ligaAInfo');
+            const ligaBInfo = document.getElementById('ligaBInfo');
+
+            // Hide all info boxes first
+            ligaAInfo.style.display = 'none';
+            ligaBInfo.style.display = 'none';
+
+            if (this.value === 'liga_a') {
+                leagueInfo.style.display = 'block';
+                ligaAInfo.style.display = 'block';
+            } else if (this.value === 'liga_b') {
+                leagueInfo.style.display = 'block';
+                ligaBInfo.style.display = 'block';
+            } else {
+                leagueInfo.style.display = 'none';
+            }
+        });
+
+        // Trigger change event on page load to show selected league info
+        document.addEventListener('DOMContentLoaded', function () {
+            document.getElementById('league_id').dispatchEvent(new Event('change'));
+        });
+    </script>
+</body>
+
+</html>

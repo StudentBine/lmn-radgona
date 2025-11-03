@@ -1,6 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_caching import Cache
 from flask_compress import Compress
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
 from scraper_radgona import fetch_lmn_radgona_data, BASE_URL, parse_score
 from datetime import datetime
 from urllib.parse import urljoin
@@ -46,8 +48,55 @@ cache_config = {
 }
 cache = Cache(app, config=cache_config)
 
+# Flask config for sessions and admin
+app.secret_key = os.environ.get('SECRET_KEY', 'lmn-radgona-secret-key-2025')
+
 database.init_db_pool()
 database.init_db()
+
+# Admin permissions
+ADMIN_PERMISSIONS = {
+    'add_teams': 'Dodajanje ekip',
+    'edit_teams': 'Urejanje ekip', 
+    'delete_teams': 'Brisanje ekip',
+    'add_players': 'Dodajanje igralcev',
+    'edit_players': 'Urejanje igralcev',
+    'delete_players': 'Brisanje igralcev',
+    'add_cards': 'Dodajanje kartonov',
+    'add_results': 'Dodajanje rezultatov',
+    'edit_results': 'Urejanje rezultatov',
+    'manage_users': 'Upravljanje uporabnikov'
+}
+
+# Decorator for admin authentication
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        print(f"DEBUG admin_required: Session contents: {dict(session)}")
+        print(f"DEBUG admin_required: admin_logged_in in session: {'admin_logged_in' in session}")
+        if 'admin_logged_in' not in session:
+            flash('Potrebna je prijava za dostop do admin panela.', 'error')
+            return redirect(url_for('admin_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Decorator for specific permissions
+def permission_required(permission):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'admin_logged_in' not in session:
+                flash('Potrebna je prijava.', 'error')
+                return redirect(url_for('admin_login'))
+            
+            user_permissions = session.get('admin_permissions', [])
+            if permission not in user_permissions and 'manage_users' not in user_permissions:
+                flash('Nimate dovoljenja za to dejanje.', 'error')
+                return redirect(url_for('admin_dashboard'))
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 LEAGUES_CONFIG = {
     "liga_a": {
@@ -391,6 +440,687 @@ def debug_league(league_id):
     except Exception as e:
         return f"Debug error: {str(e)}", 500
 
+
+# Admin Routes
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    """Admin login page"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        print(f"DEBUG: Login attempt - Username: {username}, Password: {'*' * len(password) if password else 'None'}")
+        
+        try:
+            user = database.get_admin_user(username)
+            print(f"DEBUG: User found: {user is not None}")
+            
+            if user:
+                password_check = check_password_hash(user['password'], password)
+                print(f"DEBUG: Password check result: {password_check}")
+                
+                if password_check:
+                    session['admin_logged_in'] = True
+                    session['admin_username'] = user['username']
+                    session['admin_permissions'] = user['permissions']
+                    flash('Uspešno ste se prijavili!', 'success')
+                    print("DEBUG: Login successful, redirecting to dashboard")
+                    return redirect(url_for('admin_dashboard'))
+                else:
+                    flash('Napačno uporabniško ime ali geslo.', 'error')
+                    print("DEBUG: Password check failed")
+            else:
+                flash('Napačno uporabniško ime ali geslo.', 'error')
+                print("DEBUG: User not found")
+        except Exception as e:
+            logger.error(f"Login error: {str(e)}")
+            flash('Napaka pri prijavi.', 'error')
+            print(f"DEBUG: Exception during login: {e}")
+    
+    return render_template('admin/login.html')
+
+@app.route('/admin/logout')
+@admin_required
+def admin_logout():
+    """Admin logout"""
+    session.clear()
+    flash('Uspešno ste se odjavili.', 'success')
+    return redirect(url_for('admin_login'))
+
+@app.route('/admin/dashboard')
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Main admin dashboard"""
+    try:
+        # Get basic statistics
+        stats = {
+            'total_matches': database.get_total_matches(),
+            'total_teams': database.get_total_teams(),
+            'total_users': database.get_total_admin_users()
+        }
+        return render_template('admin/dashboard.html', stats=stats, permissions=ADMIN_PERMISSIONS)
+    except Exception as e:
+        logger.error(f"Dashboard error: {str(e)}")
+        flash('Napaka pri nalaganju dashboard-a.', 'error')
+        return render_template('admin/dashboard.html', stats={}, permissions=ADMIN_PERMISSIONS)
+
+@app.route('/admin/users')
+@permission_required('manage_users')
+def admin_users():
+    """User management page"""
+    try:
+        users = database.get_all_admin_users()
+        return render_template('admin/users.html', users=users, permissions=ADMIN_PERMISSIONS)
+    except Exception as e:
+        logger.error(f"Users error: {str(e)}")
+        flash('Napaka pri nalaganju uporabnikov.', 'error')
+        return render_template('admin/users.html', users=[], permissions=ADMIN_PERMISSIONS)
+
+@app.route('/admin/users/add', methods=['GET', 'POST'])
+@permission_required('manage_users')
+def admin_add_user():
+    """Add new admin user"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        permissions = request.form.getlist('permissions')
+        
+        if not username or not password:
+            flash('Uporabniško ime in geslo sta obvezna.', 'error')
+        else:
+            try:
+                hashed_password = generate_password_hash(password)
+                success = database.create_admin_user(username, hashed_password, permissions)
+                if success:
+                    flash('Uporabnik je bil uspešno dodan.', 'success')
+                    return redirect(url_for('admin_users'))
+                else:
+                    flash('Uporabnik s tem imenom že obstaja.', 'error')
+            except Exception as e:
+                logger.error(f"Add user error: {str(e)}")
+                flash('Napaka pri dodajanju uporabnika.', 'error')
+    
+    return render_template('admin/add_user.html', permissions=ADMIN_PERMISSIONS)
+
+@app.route('/admin/users/<int:user_id>/edit', methods=['GET', 'POST'])
+@permission_required('manage_users')
+def admin_edit_user(user_id):
+    """Edit admin user"""
+    try:
+        user = database.get_admin_user_by_id(user_id)
+        if not user:
+            flash('Uporabnik ne obstaja.', 'error')
+            return redirect(url_for('admin_users'))
+        
+        if request.method == 'POST':
+            permissions = request.form.getlist('permissions')
+            password = request.form.get('password')
+            
+            update_data = {'permissions': permissions}
+            if password:
+                update_data['password'] = generate_password_hash(password)
+            
+            success = database.update_admin_user(user_id, update_data)
+            if success:
+                flash('Uporabnik je bil uspešno posodobljen.', 'success')
+                return redirect(url_for('admin_users'))
+            else:
+                flash('Napaka pri posodabljanju uporabnika.', 'error')
+        
+        return render_template('admin/edit_user.html', user=user, permissions=ADMIN_PERMISSIONS)
+    except Exception as e:
+        logger.error(f"Edit user error: {str(e)}")
+        flash('Napaka pri urejanju uporabnika.', 'error')
+        return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+@permission_required('manage_users')
+def admin_delete_user(user_id):
+    """Delete admin user"""
+    try:
+        success = database.delete_admin_user(user_id)
+        if success:
+            flash('Uporabnik je bil uspešno odstranjen.', 'success')
+        else:
+            flash('Napaka pri brisanju uporabnika.', 'error')
+    except Exception as e:
+        logger.error(f"Delete user error: {str(e)}")
+        flash('Napaka pri brisanju uporabnika.', 'error')
+    
+    return redirect(url_for('admin_users'))
+
+# === Team Management Routes ===
+@app.route('/admin/teams')
+@admin_required
+@permission_required('manage_teams')
+def admin_teams():
+    """Team management page"""
+    try:
+        league_filter = request.args.get('league')
+        teams = database.get_all_teams(league_filter)
+        counts = database.get_teams_count_by_league()
+        
+        return render_template('admin/teams.html', 
+                             teams=teams,
+                             filter_league=league_filter,
+                             total_teams=counts['total'],
+                             liga_a_count=counts['liga_a'],
+                             liga_b_count=counts['liga_b'])
+    except Exception as e:
+        logger.error(f"Teams page error: {str(e)}")
+        flash('Napaka pri nalaganju ekip.', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/teams/add', methods=['GET', 'POST'])
+@admin_required
+@permission_required('manage_teams')
+def admin_add_team():
+    """Add new team"""
+    if request.method == 'POST':
+        try:
+            name = request.form.get('name', '').strip()
+            league_id = request.form.get('league_id', '').strip()
+            
+            if not name or not league_id:
+                flash('Ime ekipe in liga sta obvezna', 'error')
+                return render_template('admin/add_team.html')
+            
+            if len(name) < 2:
+                flash('Ime ekipe mora imeti vsaj 2 znaka', 'error')
+                return render_template('admin/add_team.html')
+            
+            if league_id not in ['liga_a', 'liga_b']:
+                flash('Neveljavna liga', 'error')
+                return render_template('admin/add_team.html')
+            
+            # Check if team name already exists
+            existing_team = database.get_team_by_name(name)
+            if existing_team:
+                flash('Ekipa s tem imenom že obstaja', 'error')
+                return render_template('admin/add_team.html')
+            
+            # Create team
+            team_id = database.create_team(name, league_id)
+            if team_id:
+                flash(f'Ekipa {name} je bila uspešno ustvarjena', 'success')
+                return redirect(url_for('admin_teams'))
+            else:
+                flash('Napaka pri ustvarjanju ekipe', 'error')
+                
+        except Exception as e:
+            logger.error(f"Add team error: {str(e)}")
+            flash('Napaka pri dodajanju ekipe', 'error')
+    
+    try:
+        counts = database.get_teams_count_by_league()
+        return render_template('admin/add_team.html', 
+                             liga_a_count=counts['liga_a'],
+                             liga_b_count=counts['liga_b'])
+    except:
+        return render_template('admin/add_team.html')
+
+@app.route('/admin/teams/<int:team_id>/edit', methods=['GET', 'POST'])
+@admin_required
+@permission_required('manage_teams')
+def admin_edit_team(team_id):
+    """Edit existing team"""
+    try:
+        team = database.get_team_by_id(team_id)
+        if not team:
+            flash('Ekipa ni bila najdena', 'error')
+            return redirect(url_for('admin_teams'))
+        
+        if request.method == 'POST':
+            name = request.form.get('name', '').strip()
+            league_id = request.form.get('league_id', '').strip()
+            
+            if not name or not league_id:
+                flash('Ime ekipe in liga sta obvezna', 'error')
+                return render_template('admin/edit_team.html', team=team)
+            
+            if len(name) < 2:
+                flash('Ime ekipe mora imeti vsaj 2 znaka', 'error')
+                return render_template('admin/edit_team.html', team=team)
+            
+            if league_id not in ['liga_a', 'liga_b']:
+                flash('Neveljavna liga', 'error')
+                return render_template('admin/edit_team.html', team=team)
+            
+            # Check if team name is taken by another team
+            existing_team = database.get_team_by_name(name, exclude_id=team_id)
+            if existing_team:
+                flash('Ekipa s tem imenom že obstaja', 'error')
+                return render_template('admin/edit_team.html', team=team)
+            
+            # Update team
+            if database.update_team(team_id, name, league_id):
+                flash(f'Ekipa {name} je bila uspešno posodobljena', 'success')
+                return redirect(url_for('admin_teams'))
+            else:
+                flash('Napaka pri posodabljanju ekipe', 'error')
+        
+        counts = database.get_teams_count_by_league()
+        return render_template('admin/edit_team.html', 
+                             team=team,
+                             liga_a_count=counts['liga_a'],
+                             liga_b_count=counts['liga_b'])
+        
+    except Exception as e:
+        logger.error(f"Edit team error: {str(e)}")
+        flash('Napaka pri urejanju ekipe', 'error')
+        return redirect(url_for('admin_teams'))
+
+@app.route('/admin/teams/<int:team_id>/delete', methods=['POST'])
+@admin_required
+@permission_required('manage_teams')
+def admin_delete_team(team_id):
+    """Delete team"""
+    try:
+        team = database.get_team_by_id(team_id)
+        if not team:
+            flash('Ekipa ni bila najdena', 'error')
+            return redirect(url_for('admin_teams'))
+        
+        if database.delete_team(team_id):
+            flash(f'Ekipa {team["name"]} je bila uspešno odstranjena', 'success')
+        else:
+            flash('Napaka pri odstranjevanju ekipe', 'error')
+            
+    except Exception as e:
+        logger.error(f"Delete team error: {str(e)}")
+        flash('Napaka pri odstranjevanju ekipe', 'error')
+    
+    return redirect(url_for('admin_teams'))
+
+@app.route('/admin/teams/<int:team_id>/players')
+@admin_required
+@permission_required('manage_players')
+def admin_team_players(team_id):
+    """Team players management"""
+    try:
+        team = database.get_team_by_id(team_id)
+        if not team:
+            flash('Ekipa ni bila najdena', 'error')
+            return redirect(url_for('admin_teams'))
+        
+        players = database.get_players_by_team(team_id)
+        return render_template('admin/players.html', team=team, players=players)
+        
+    except Exception as e:
+        logger.error(f"Team players error: {str(e)}")
+        flash('Napaka pri nalaganju igralcev', 'error')
+        return redirect(url_for('admin_teams'))
+
+# === Player Management Routes ===
+@app.route('/admin/players')
+@admin_required
+@permission_required('manage_players')
+def admin_players():
+    """All players management"""
+    try:
+        players = database.get_all_players()
+        return render_template('admin/players.html', players=players, team=None)
+    except Exception as e:
+        logger.error(f"Players page error: {str(e)}")
+        flash('Napaka pri nalaganju igralcev', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/players/add')
+@app.route('/admin/teams/<int:team_id>/players/add')
+@admin_required
+@permission_required('manage_players')
+def admin_add_player(team_id=None):
+    """Add new player"""
+    try:
+        team = None
+        teams = database.get_all_teams()
+        
+        if team_id:
+            team = database.get_team_by_id(team_id)
+            if not team:
+                flash('Ekipa ni bila najdena', 'error')
+                return redirect(url_for('admin_teams'))
+        
+        return render_template('admin/add_player.html', team=team, teams=teams)
+        
+    except Exception as e:
+        logger.error(f"Add player page error: {str(e)}")
+        flash('Napaka pri nalaganju strani', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/players/add', methods=['POST'])
+@app.route('/admin/teams/<int:team_id>/players/add', methods=['POST'])
+@admin_required
+@permission_required('manage_players')
+def admin_add_player_post(team_id=None):
+    """Process add player form"""
+    try:
+        name = request.form.get('name', '').strip()
+        form_team_id = request.form.get('team_id')
+        jersey_number = request.form.get('jersey_number')
+        
+        # Use team_id from URL if available, otherwise from form
+        final_team_id = team_id or (int(form_team_id) if form_team_id else None)
+        
+        if not name or not final_team_id:
+            flash('Ime igralca in ekipa sta obvezna', 'error')
+            return redirect(request.url)
+        
+        if len(name) < 2:
+            flash('Ime igralca mora imeti vsaj 2 znaka', 'error')
+            return redirect(request.url)
+        
+        # Validate jersey number if provided
+        if jersey_number:
+            try:
+                jersey_number = int(jersey_number)
+                if jersey_number < 1 or jersey_number > 99:
+                    flash('Številka dresa mora biti med 1 in 99', 'error')
+                    return redirect(request.url)
+                
+                # Check if jersey number is available
+                if not database.check_jersey_number_available(final_team_id, jersey_number):
+                    flash('Številka dresa je že zasedena v tej ekipi', 'error')
+                    return redirect(request.url)
+                    
+            except ValueError:
+                flash('Neveljavna številka dresa', 'error')
+                return redirect(request.url)
+        else:
+            jersey_number = None
+        
+        # Verify team exists
+        team = database.get_team_by_id(final_team_id)
+        if not team:
+            flash('Ekipa ni bila najdena', 'error')
+            return redirect(request.url)
+        
+        # Create player
+        player_id = database.create_player(name, final_team_id, jersey_number)
+        if player_id:
+            flash(f'Igralec {name} je bil uspešno dodan v ekipo {team["name"]}', 'success')
+            return redirect(url_for('admin_team_players', team_id=final_team_id))
+        else:
+            flash('Napaka pri ustvarjanju igralca', 'error')
+            
+    except Exception as e:
+        logger.error(f"Add player error: {str(e)}")
+        flash('Napaka pri dodajanju igralca', 'error')
+    
+    return redirect(request.url)
+
+@app.route('/admin/players/<int:player_id>/edit', methods=['GET', 'POST'])
+@admin_required
+@permission_required('manage_players')
+def admin_edit_player(player_id):
+    """Edit existing player"""
+    try:
+        player = database.get_player_by_id(player_id)
+        if not player:
+            flash('Igralec ni bil najden', 'error')
+            return redirect(url_for('admin_players'))
+        
+        if request.method == 'POST':
+            name = request.form.get('name', '').strip()
+            team_id = request.form.get('team_id')
+            jersey_number = request.form.get('jersey_number')
+            
+            if not name or not team_id:
+                flash('Ime igralca in ekipa sta obvezna', 'error')
+                return render_template('admin/edit_player.html', player=player, teams=database.get_all_teams())
+            
+            if len(name) < 2:
+                flash('Ime igralca mora imeti vsaj 2 znaka', 'error')
+                return render_template('admin/edit_player.html', player=player, teams=database.get_all_teams())
+            
+            # Validate jersey number if provided
+            if jersey_number:
+                try:
+                    jersey_number = int(jersey_number)
+                    if jersey_number < 1 or jersey_number > 99:
+                        flash('Številka dresa mora biti med 1 in 99', 'error')
+                        return render_template('admin/edit_player.html', player=player, teams=database.get_all_teams())
+                    
+                    # Check if jersey number is available (exclude current player)
+                    if not database.check_jersey_number_available(int(team_id), jersey_number, player_id):
+                        flash('Številka dresa je že zasedena v tej ekipi', 'error')
+                        return render_template('admin/edit_player.html', player=player, teams=database.get_all_teams())
+                        
+                except ValueError:
+                    flash('Neveljavna številka dresa', 'error')
+                    return render_template('admin/edit_player.html', player=player, teams=database.get_all_teams())
+            else:
+                jersey_number = None
+            
+            # Verify team exists
+            team = database.get_team_by_id(int(team_id))
+            if not team:
+                flash('Ekipa ni bila najdena', 'error')
+                return render_template('admin/edit_player.html', player=player, teams=database.get_all_teams())
+            
+            # Update player
+            if database.update_player(player_id, name, int(team_id), jersey_number):
+                flash(f'Igralec {name} je bil uspešno posodobljen', 'success')
+                return redirect(url_for('admin_team_players', team_id=int(team_id)))
+            else:
+                flash('Napaka pri posodabljanju igralca', 'error')
+        
+        teams = database.get_all_teams()
+        return render_template('admin/edit_player.html', player=player, teams=teams)
+        
+    except Exception as e:
+        logger.error(f"Edit player error: {str(e)}")
+        flash('Napaka pri urejanju igralca', 'error')
+        return redirect(url_for('admin_players'))
+
+@app.route('/admin/players/<int:player_id>/delete', methods=['POST'])
+@admin_required
+@permission_required('manage_players')
+def admin_delete_player(player_id):
+    """Delete player"""
+    try:
+        player = database.get_player_by_id(player_id)
+        if not player:
+            flash('Igralec ni bil najden', 'error')
+            return redirect(url_for('admin_players'))
+        
+        team_id = player['team_id']
+        
+        if database.delete_player(player_id):
+            flash(f'Igralec {player["name"]} je bil uspešno odstranjen', 'success')
+        else:
+            flash('Napaka pri odstranjevanju igralca', 'error')
+            
+        return redirect(url_for('admin_team_players', team_id=team_id))
+            
+    except Exception as e:
+        logger.error(f"Delete player error: {str(e)}")
+        flash('Napaka pri odstranjevanju igralca', 'error')
+        return redirect(url_for('admin_players'))
+
+# === Match Results Routes ===
+@app.route('/admin/match-results')
+@admin_required
+@permission_required('manage_results')
+def admin_match_results():
+    """List all matches with results"""
+    try:
+        matches = database.get_all_matches_for_results()
+        return render_template('admin/match_results.html', matches=matches)
+    except Exception as e:
+        logger.error(f"Match results error: {str(e)}")
+        flash('Napaka pri pridobivanju rezultatov tekem', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/match-results/<string:match_id>/edit')
+@admin_required
+@permission_required('manage_results')
+def admin_edit_match_result(match_id):
+    """Edit match result details"""
+    try:
+        # Get match info
+        match = database.get_match_by_unique_id(match_id)
+        if not match:
+            flash('Tekma ni bila najdena', 'error')
+            return redirect(url_for('admin_match_results'))
+        
+        # Get or create match result
+        result = None
+        try:
+            result = database.get_match_result_by_match_id(match_id)
+        except:
+            pass
+        
+        if not result:
+            # Try to find team IDs by names
+            home_team = database.find_team_by_name(match['home_team'], match['league_id'])
+            away_team = database.find_team_by_name(match['away_team'], match['league_id'])
+            
+            if home_team and away_team:
+                result_id = database.create_match_result(
+                    match_id, home_team['id'], away_team['id'], 0, 0, 'scheduled'
+                )
+                result = database.get_match_result_by_id(result_id)
+        
+        if not result:
+            flash('Ni mogoče ustvariti rezultata tekme - manjkajo podatki o ekipah', 'error')
+            return redirect(url_for('admin_match_results'))
+        
+        # Get goals and cards
+        goals = database.get_match_goals(result['id'])
+        cards = database.get_match_cards(result['id'])
+        
+        # Get team players
+        home_players = database.get_team_players(result['home_team_id']) if result['home_team_id'] else []
+        away_players = database.get_team_players(result['away_team_id']) if result['away_team_id'] else []
+        
+        return render_template('admin/edit_match_result.html', 
+                             match=match, result=result, goals=goals, cards=cards,
+                             home_players=home_players, away_players=away_players)
+    
+    except Exception as e:
+        logger.error(f"Edit match result error: {str(e)}")
+        flash('Napaka pri urejanju rezultata tekme', 'error')
+        return redirect(url_for('admin_match_results'))
+
+@app.route('/admin/match-results/<int:result_id>/update', methods=['POST'])
+@admin_required
+@permission_required('manage_results')
+def admin_update_match_result(result_id):
+    """Update match result"""
+    try:
+        home_score = int(request.form.get('home_score', 0))
+        away_score = int(request.form.get('away_score', 0))
+        status = request.form.get('status', 'finished')
+        referee = request.form.get('referee', '').strip() or None
+        notes = request.form.get('notes', '').strip() or None
+        
+        if database.update_match_result(result_id, home_score, away_score, status, referee, notes):
+            flash('Rezultat tekme je bil posodobljen', 'success')
+        else:
+            flash('Napaka pri posodabljanju rezultata', 'error')
+            
+    except Exception as e:
+        logger.error(f"Update match result error: {str(e)}")
+        flash('Napaka pri posodabljanju rezultata tekme', 'error')
+    
+    # Get match_id for redirect
+    result = database.get_match_result_by_id(result_id)
+    if result:
+        return redirect(url_for('admin_edit_match_result', match_id=result['match_id']))
+    return redirect(url_for('admin_match_results'))
+
+# === Goals Routes ===
+@app.route('/admin/match-results/<int:result_id>/goals/add', methods=['POST'])
+@admin_required
+@permission_required('manage_results')
+def admin_add_goal(result_id):
+    """Add goal to match"""
+    try:
+        player_id = int(request.form.get('player_id'))
+        team_id = int(request.form.get('team_id'))
+        minute = int(request.form.get('minute'))
+        goal_type = request.form.get('goal_type', 'regular')
+        assist_player_id = request.form.get('assist_player_id')
+        assist_player_id = int(assist_player_id) if assist_player_id else None
+        
+        goal_id = database.add_goal(result_id, player_id, team_id, minute, goal_type, assist_player_id)
+        if goal_id:
+            flash('Gol je bil dodan', 'success')
+        else:
+            flash('Napaka pri dodajanju gola', 'error')
+            
+    except Exception as e:
+        logger.error(f"Add goal error: {str(e)}")
+        flash('Napaka pri dodajanju gola', 'error')
+    
+    # Get match_id for redirect
+    result = database.get_match_result_by_id(result_id)
+    if result:
+        return redirect(url_for('admin_edit_match_result', match_id=result['match_id']))
+    return redirect(url_for('admin_match_results'))
+
+@app.route('/admin/goals/<int:goal_id>/delete', methods=['POST'])
+@admin_required
+@permission_required('manage_results')
+def admin_delete_goal(goal_id):
+    """Delete goal"""
+    try:
+        if database.delete_goal(goal_id):
+            flash('Gol je bil odstranjen', 'success')
+        else:
+            flash('Napaka pri odstranjevanju gola', 'error')
+    except Exception as e:
+        logger.error(f"Delete goal error: {str(e)}")
+        flash('Napaka pri odstranjevanju gola', 'error')
+    
+    return redirect(request.referrer or url_for('admin_match_results'))
+
+# === Cards Routes ===
+@app.route('/admin/match-results/<int:result_id>/cards/add', methods=['POST'])
+@admin_required
+@permission_required('manage_results')
+def admin_add_card(result_id):
+    """Add card to match"""
+    try:
+        player_id = int(request.form.get('player_id'))
+        team_id = int(request.form.get('team_id'))
+        card_type = request.form.get('card_type')
+        minute = int(request.form.get('minute'))
+        reason = request.form.get('reason', '').strip() or None
+        
+        card_id = database.add_card(result_id, player_id, team_id, card_type, minute, reason)
+        if card_id:
+            flash('Karton je bil dodan', 'success')
+        else:
+            flash('Napaka pri dodajanju kartona', 'error')
+            
+    except Exception as e:
+        logger.error(f"Add card error: {str(e)}")
+        flash('Napaka pri dodajanju kartona', 'error')
+    
+    # Get match_id for redirect
+    result = database.get_match_result_by_id(result_id)
+    if result:
+        return redirect(url_for('admin_edit_match_result', match_id=result['match_id']))
+    return redirect(url_for('admin_match_results'))
+
+@app.route('/admin/cards/<int:card_id>/delete', methods=['POST'])
+@admin_required
+@permission_required('manage_results')
+def admin_delete_card(card_id):
+    """Delete card"""
+    try:
+        if database.delete_card(card_id):
+            flash('Karton je bil odstranjen', 'success')
+        else:
+            flash('Napaka pri odstranjevanju kartona', 'error')
+    except Exception as e:
+        logger.error(f"Delete card error: {str(e)}")
+        flash('Napaka pri odstranjevanju kartona', 'error')
+    
+    return redirect(request.referrer or url_for('admin_match_results'))
 
 if __name__ == '__main__':
     database.init_db_pool()

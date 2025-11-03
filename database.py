@@ -84,6 +84,128 @@ def init_db():
             )
         ''')
 
+        # Admin tables
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admin_users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                permissions TEXT[], -- Array of permissions
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS teams (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                league_id TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(name, league_id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS players (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+                jersey_number INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cards (
+                id SERIAL PRIMARY KEY,
+                match_id INTEGER,
+                player_id INTEGER REFERENCES players(id) ON DELETE CASCADE,
+                card_type VARCHAR(20) NOT NULL, -- 'yellow' or 'red'
+                minute INTEGER,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create match_results table for detailed match results
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS match_results (
+                id SERIAL PRIMARY KEY,
+                match_id TEXT REFERENCES matches(match_unique_id) UNIQUE,
+                home_team_id INTEGER REFERENCES teams(id),
+                away_team_id INTEGER REFERENCES teams(id),
+                home_score INTEGER DEFAULT 0,
+                away_score INTEGER DEFAULT 0,
+                status VARCHAR(20) DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'in_progress', 'finished', 'postponed', 'cancelled')),
+                match_date DATE,
+                venue TEXT,
+                referee TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create goals table for tracking individual goals
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS goals (
+                id SERIAL PRIMARY KEY,
+                match_result_id INTEGER REFERENCES match_results(id) ON DELETE CASCADE,
+                player_id INTEGER REFERENCES players(id),
+                team_id INTEGER REFERENCES teams(id),
+                minute INTEGER,
+                goal_type VARCHAR(20) DEFAULT 'regular' CHECK (goal_type IN ('regular', 'penalty', 'own_goal', 'free_kick', 'header')),
+                assist_player_id INTEGER REFERENCES players(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create match_cards table for tracking cards in matches  
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS match_cards (
+                id SERIAL PRIMARY KEY,
+                match_result_id INTEGER REFERENCES match_results(id) ON DELETE CASCADE,
+                player_id INTEGER REFERENCES players(id),
+                team_id INTEGER REFERENCES teams(id),
+                card_type VARCHAR(10) NOT NULL CHECK (card_type IN ('yellow', 'red')),
+                minute INTEGER,
+                reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # Create default admin user if none exists
+        try:
+            cursor.execute("SELECT COUNT(*) FROM admin_users")
+            result = cursor.fetchone()
+            admin_count = 0
+            if result:
+                if hasattr(result, 'count'):
+                    admin_count = result.count
+                elif isinstance(result, (list, tuple)) and len(result) > 0:
+                    admin_count = result[0]
+                else:
+                    admin_count = result
+        except Exception as e:
+            print(f"Error checking admin users: {e}")
+            admin_count = 0
+        
+        if admin_count == 0:
+            try:
+                from werkzeug.security import generate_password_hash
+                default_password = generate_password_hash('admin123')
+                permissions = ['manage_users', 'manage_teams', 'manage_players', 'manage_results', 'manage_cards', 'view_statistics']
+                cursor.execute('''
+                    INSERT INTO admin_users (username, password, permissions)
+                    VALUES (%s, %s, %s)
+                ''', ('admin', default_password, permissions))
+                print("Created default admin user: admin / admin123")
+            except Exception as e:
+                print(f"Error creating default admin user: {e}")
+
     print("PostgreSQL database initialized.")
 
 # --- Leagues Meta ---
@@ -214,6 +336,444 @@ def get_all_teams_for_league(league_id):
         """, (league_id, league_id))
         teams = [row['team'] for row in cursor.fetchall()]
     return teams
+
+# === Admin User Functions ===
+def get_admin_user(username):
+    """Get admin user by username"""
+    with db_cursor() as cursor:
+        cursor.execute("SELECT * FROM admin_users WHERE username = %s", (username,))
+        return cursor.fetchone()
+
+def get_admin_user_by_id(user_id):
+    """Get admin user by ID"""
+    with db_cursor() as cursor:
+        cursor.execute("SELECT * FROM admin_users WHERE id = %s", (user_id,))
+        return cursor.fetchone()
+
+def get_all_admin_users():
+    """Get all admin users"""
+    with db_cursor() as cursor:
+        cursor.execute("SELECT id, username, permissions, created_at FROM admin_users ORDER BY username")
+        return cursor.fetchall()
+
+def create_admin_user(username, password, permissions):
+    """Create new admin user"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute('''
+                INSERT INTO admin_users (username, password, permissions)
+                VALUES (%s, %s, %s)
+            ''', (username, password, permissions))
+            return True
+    except psycopg2.IntegrityError:
+        return False
+
+def update_admin_user(user_id, data):
+    """Update admin user"""
+    try:
+        with db_cursor() as cursor:
+            set_clause = []
+            values = []
+            
+            if 'password' in data:
+                set_clause.append("password = %s")
+                values.append(data['password'])
+            
+            if 'permissions' in data:
+                set_clause.append("permissions = %s")
+                values.append(data['permissions'])
+            
+            set_clause.append("updated_at = CURRENT_TIMESTAMP")
+            values.append(user_id)
+            
+            query = f"UPDATE admin_users SET {', '.join(set_clause)} WHERE id = %s"
+            cursor.execute(query, values)
+            return True
+    except Exception:
+        return False
+
+def delete_admin_user(user_id):
+    """Delete admin user"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("DELETE FROM admin_users WHERE id = %s", (user_id,))
+            return True
+    except Exception:
+        return False
+
+# === Statistics Functions ===
+def get_total_matches():
+    """Get total number of matches"""
+    with db_cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM matches")
+        result = cursor.fetchone()
+        return result['count'] if result else 0
+
+def get_total_teams():
+    """Get total number of unique teams"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT COUNT(DISTINCT team) FROM (
+                SELECT home_team as team FROM matches
+                UNION
+                SELECT away_team as team FROM matches
+            ) teams
+        """)
+        result = cursor.fetchone()
+        return result['count'] if result else 0
+
+def get_total_admin_users():
+    """Get total number of admin users"""
+    with db_cursor() as cursor:
+        cursor.execute("SELECT COUNT(*) FROM admin_users")
+        result = cursor.fetchone()
+        return result['count'] if result else 0
+
+# === Team Management Functions ===
+def get_all_teams(league_filter=None):
+    """Get all teams, optionally filtered by league"""
+    with db_cursor() as cursor:
+        if league_filter:
+            cursor.execute("""
+                SELECT t.*, 
+                       COUNT(p.id) as player_count
+                FROM teams t
+                LEFT JOIN players p ON t.id = p.team_id
+                WHERE t.league_id = %s
+                GROUP BY t.id, t.name, t.league_id, t.created_at, t.updated_at
+                ORDER BY t.name
+            """, (league_filter,))
+        else:
+            cursor.execute("""
+                SELECT t.*, 
+                       COUNT(p.id) as player_count
+                FROM teams t
+                LEFT JOIN players p ON t.id = p.team_id
+                GROUP BY t.id, t.name, t.league_id, t.created_at, t.updated_at
+                ORDER BY t.name
+            """)
+        return cursor.fetchall()
+
+def get_team_by_id(team_id):
+    """Get team by ID with player count"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT t.*, 
+                   COUNT(p.id) as player_count
+            FROM teams t
+            LEFT JOIN players p ON t.id = p.team_id
+            WHERE t.id = %s
+            GROUP BY t.id, t.name, t.league_id, t.created_at, t.updated_at
+        """, (team_id,))
+        return cursor.fetchone()
+
+def create_team(name, league_id):
+    """Create new team"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO teams (name, league_id)
+                VALUES (%s, %s)
+                RETURNING id
+            """, (name, league_id))
+            return cursor.fetchone()['id']
+    except Exception as e:
+        print(f"Error creating team: {e}")
+        return None
+
+def update_team(team_id, name, league_id):
+    """Update existing team"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("""
+                UPDATE teams 
+                SET name = %s, league_id = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (name, league_id, team_id))
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error updating team: {e}")
+        return False
+
+def delete_team(team_id):
+    """Delete team (will cascade delete players)"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("DELETE FROM teams WHERE id = %s", (team_id,))
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error deleting team: {e}")
+        return False
+
+def get_team_by_name(name, exclude_id=None):
+    """Check if team name exists (for uniqueness validation)"""
+    with db_cursor() as cursor:
+        if exclude_id:
+            cursor.execute("SELECT * FROM teams WHERE name = %s AND id != %s", (name, exclude_id))
+        else:
+            cursor.execute("SELECT * FROM teams WHERE name = %s", (name,))
+        return cursor.fetchone()
+
+def get_teams_count_by_league():
+    """Get count of teams per league"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT league_id, COUNT(*) as count
+            FROM teams
+            GROUP BY league_id
+        """)
+        result = {row['league_id']: row['count'] for row in cursor.fetchall()}
+        return {
+            'liga_a': result.get('liga_a', 0),
+            'liga_b': result.get('liga_b', 0),
+            'total': sum(result.values())
+        }
+
+# === Player Management Functions ===
+def get_players_by_team(team_id):
+    """Get all players for specific team"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT p.*, t.name as team_name, t.league_id as team_league_id
+            FROM players p
+            JOIN teams t ON p.team_id = t.id
+            WHERE p.team_id = %s
+            ORDER BY p.jersey_number, p.name
+        """, (team_id,))
+        return cursor.fetchall()
+
+def get_all_players():
+    """Get all players with team information"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT p.*, t.name as team_name, t.league_id as team_league_id
+            FROM players p
+            JOIN teams t ON p.team_id = t.id
+            ORDER BY t.name, p.jersey_number, p.name
+        """)
+        return cursor.fetchall()
+
+def get_player_by_id(player_id):
+    """Get player by ID with team information"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT p.*, t.name as team_name, t.league_id as team_league_id
+            FROM players p
+            JOIN teams t ON p.team_id = t.id
+            WHERE p.id = %s
+        """, (player_id,))
+        return cursor.fetchone()
+
+def create_player(name, team_id, jersey_number=None):
+    """Create new player"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO players (name, team_id, jersey_number)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, (name, team_id, jersey_number))
+            return cursor.fetchone()['id']
+    except Exception as e:
+        print(f"Error creating player: {e}")
+        return None
+
+def update_player(player_id, name, team_id, jersey_number=None):
+    """Update existing player"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("""
+                UPDATE players 
+                SET name = %s, team_id = %s, jersey_number = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (name, team_id, jersey_number, player_id))
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error updating player: {e}")
+        return False
+
+def delete_player(player_id):
+    """Delete player"""
+    try:
+        with db_cursor() as cursor:
+            cursor.execute("DELETE FROM players WHERE id = %s", (player_id,))
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error deleting player: {e}")
+        return False
+
+def check_jersey_number_available(team_id, jersey_number, exclude_player_id=None):
+    """Check if jersey number is available in team"""
+    if not jersey_number:
+        return True
+    
+    with db_cursor() as cursor:
+        if exclude_player_id:
+            cursor.execute("""
+                SELECT COUNT(*) FROM players 
+                WHERE team_id = %s AND jersey_number = %s AND id != %s
+            """, (team_id, jersey_number, exclude_player_id))
+        else:
+            cursor.execute("""
+                SELECT COUNT(*) FROM players 
+                WHERE team_id = %s AND jersey_number = %s
+            """, (team_id, jersey_number))
+        
+        result = cursor.fetchone()
+        return result['count'] == 0 if result else True
+
+# === Match Results Functions ===
+def get_all_matches_for_results():
+    """Get all matches that can have detailed results"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT m.match_unique_id, m.home_team, m.away_team, m.league_id, 
+                   m.date_str, m.score_str, m.venue,
+                   mr.id as result_id, mr.home_score, mr.away_score, mr.status
+            FROM matches m
+            LEFT JOIN match_results mr ON m.match_unique_id = mr.match_id
+            ORDER BY m.date_obj DESC, m.league_id
+        """)
+        return cursor.fetchall()
+
+def get_match_result_by_id(result_id):
+    """Get detailed match result by result_id"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT mr.*, m.home_team, m.away_team, m.league_id, m.date_str, m.venue,
+                   ht.name as home_team_name, at.name as away_team_name
+            FROM match_results mr
+            JOIN matches m ON mr.match_id = m.match_unique_id
+            LEFT JOIN teams ht ON mr.home_team_id = ht.id
+            LEFT JOIN teams at ON mr.away_team_id = at.id
+            WHERE mr.id = %s
+        """, (result_id,))
+        return cursor.fetchone()
+
+def get_match_result_by_match_id(match_id):
+    """Get match result by match_id"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT mr.*, m.home_team, m.away_team, m.league_id, m.date_str, m.venue,
+                   ht.name as home_team_name, at.name as away_team_name
+            FROM match_results mr
+            JOIN matches m ON mr.match_id = m.match_unique_id
+            LEFT JOIN teams ht ON mr.home_team_id = ht.id
+            LEFT JOIN teams at ON mr.away_team_id = at.id
+            WHERE mr.match_id = %s
+        """, (match_id,))
+        return cursor.fetchone()
+
+def create_match_result(match_id, home_team_id, away_team_id, home_score=0, away_score=0, status='finished'):
+    """Create detailed match result"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO match_results (match_id, home_team_id, away_team_id, home_score, away_score, status)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (match_id, home_team_id, away_team_id, home_score, away_score, status))
+        return cursor.fetchone()['id']
+
+def update_match_result(result_id, home_score, away_score, status='finished', referee=None, notes=None):
+    """Update match result"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            UPDATE match_results 
+            SET home_score = %s, away_score = %s, status = %s, referee = %s, notes = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (home_score, away_score, status, referee, notes, result_id))
+        return cursor.rowcount > 0
+
+# === Goals Functions ===
+def add_goal(match_result_id, player_id, team_id, minute, goal_type='regular', assist_player_id=None):
+    """Add goal to match"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO goals (match_result_id, player_id, team_id, minute, goal_type, assist_player_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (match_result_id, player_id, team_id, minute, goal_type, assist_player_id))
+        return cursor.fetchone()['id']
+
+def get_match_goals(match_result_id):
+    """Get all goals for a match"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT g.*, p.name as player_name, p.jersey_number, t.name as team_name,
+                   ap.name as assist_player_name
+            FROM goals g
+            JOIN players p ON g.player_id = p.id
+            JOIN teams t ON g.team_id = t.id
+            LEFT JOIN players ap ON g.assist_player_id = ap.id
+            WHERE g.match_result_id = %s
+            ORDER BY g.minute
+        """, (match_result_id,))
+        return cursor.fetchall()
+
+def delete_goal(goal_id):
+    """Delete goal"""
+    with db_cursor() as cursor:
+        cursor.execute("DELETE FROM goals WHERE id = %s", (goal_id,))
+        return cursor.rowcount > 0
+
+# === Cards Functions ===
+def add_card(match_result_id, player_id, team_id, card_type, minute, reason=None):
+    """Add card to match"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO match_cards (match_result_id, player_id, team_id, card_type, minute, reason)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (match_result_id, player_id, team_id, card_type, minute, reason))
+        return cursor.fetchone()['id']
+
+def get_match_cards(match_result_id):
+    """Get all cards for a match"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT mc.*, p.name as player_name, p.jersey_number, t.name as team_name
+            FROM match_cards mc
+            JOIN players p ON mc.player_id = p.id
+            JOIN teams t ON mc.team_id = t.id
+            WHERE mc.match_result_id = %s
+            ORDER BY mc.minute
+        """, (match_result_id,))
+        return cursor.fetchall()
+
+def delete_card(card_id):
+    """Delete card"""
+    with db_cursor() as cursor:
+        cursor.execute("DELETE FROM match_cards WHERE id = %s", (card_id,))
+        return cursor.rowcount > 0
+
+# === Helper Functions ===
+def get_team_players(team_id):
+    """Get all players for a team"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT id, name, jersey_number
+            FROM players 
+            WHERE team_id = %s
+            ORDER BY jersey_number
+        """, (team_id,))
+        return cursor.fetchall()
+
+def find_team_by_name(team_name, league_id=None):
+    """Find team by name"""
+    with db_cursor() as cursor:
+        if league_id:
+            cursor.execute("SELECT id, name FROM teams WHERE name = %s AND league_id = %s", (team_name, league_id))
+        else:
+            cursor.execute("SELECT id, name FROM teams WHERE name = %s", (team_name,))
+        return cursor.fetchone()
+
+def get_match_by_unique_id(match_unique_id):
+    """Get match by unique ID"""
+    with db_cursor() as cursor:
+        cursor.execute("""
+            SELECT * FROM matches WHERE match_unique_id = %s
+        """, (match_unique_id,))
+        return cursor.fetchone()
 
 if __name__ == '__main__':
     init_db_pool()

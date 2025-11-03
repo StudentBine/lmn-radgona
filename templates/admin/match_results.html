@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="sl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rezultati tekem - LMN Radgona Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                                <i class="fas fa-tachometer-alt"></i> Nadzorna plošča
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_users') }}">
+                                <i class="fas fa-users"></i> Uporabniki
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_teams') }}">
+                                <i class="fas fa-shield-alt"></i> Ekipe
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_players') }}">
+                                <i class="fas fa-running"></i> Igralci
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('admin_match_results') }}">
+                                <i class="fas fa-futbol"></i> Rezultati tekem
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_logout') }}">
+                                <i class="fas fa-sign-out-alt"></i> Odjava
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div
+                    class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">Rezultati tekem</h1>
+                </div>
+
+                <!-- Flash messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show"
+                    role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                <!-- Matches table -->
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Datum</th>
+                                <th>Liga</th>
+                                <th>Domača ekipa</th>
+                                <th>Gostje</th>
+                                <th>Rezultat</th>
+                                <th>Status</th>
+                                <th>Akcije</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for match in matches %}
+                            <tr>
+                                <td>{{ match.date_str or 'N/A' }}</td>
+                                <td>
+                                    {% if match.league_id == 'a' %}
+                                    <span class="badge bg-primary">Liga A</span>
+                                    {% elif match.league_id == 'b' %}
+                                    <span class="badge bg-secondary">Liga B</span>
+                                    {% else %}
+                                    <span class="badge bg-info">{{ match.league_id or 'N/A' }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ match.home_team or 'N/A' }}</td>
+                                <td>{{ match.away_team or 'N/A' }}</td>
+                                <td>
+                                    {% if match.result_id %}
+                                    <strong>{{ match.home_score or 0 }} : {{ match.away_score or 0 }}</strong>
+                                    {% else %}
+                                    <em class="text-muted">{{ match.score_str or 'Brez rezultata' }}</em>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if match.status %}
+                                    {% if match.status == 'finished' %}
+                                    <span class="badge bg-success">Končana</span>
+                                    {% elif match.status == 'scheduled' %}
+                                    <span class="badge bg-warning">Načrtovana</span>
+                                    {% elif match.status == 'cancelled' %}
+                                    <span class="badge bg-danger">Odpovedana</span>
+                                    {% else %}
+                                    <span class="badge bg-info">{{ match.status }}</span>
+                                    {% endif %}
+                                    {% else %}
+                                    <span class="badge bg-secondary">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('admin_edit_match_result', match_id=match.match_unique_id) }}"
+                                        class="btn btn-sm btn-primary" title="Uredi rezultat">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if not matches %}
+                <div class="text-center py-5">
+                    <p class="text-muted">Ni najdenih tekem.</p>
+                </div>
+                {% endif %}
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

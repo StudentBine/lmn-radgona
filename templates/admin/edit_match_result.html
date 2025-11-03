@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="sl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uredi rezultat tekme - LMN Radgona Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                                <i class="fas fa-tachometer-alt"></i> Nadzorna plošča
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_users') }}">
+                                <i class="fas fa-users"></i> Uporabniki
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_teams') }}">
+                                <i class="fas fa-shield-alt"></i> Ekipe
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_players') }}">
+                                <i class="fas fa-running"></i> Igralci
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('admin_match_results') }}">
+                                <i class="fas fa-futbol"></i> Rezultati tekem
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin_logout') }}">
+                                <i class="fas fa-sign-out-alt"></i> Odjava
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div
+                    class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">
+                        <a href="{{ url_for('admin_match_results') }}" class="btn btn-outline-secondary btn-sm me-2">
+                            <i class="fas fa-arrow-left"></i>
+                        </a>
+                        Uredi rezultat tekme
+                    </h1>
+                </div>
+
+                <!-- Flash messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show"
+                    role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                <!-- Match Info -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Informacije o tekmi</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Datum:</strong> {{ match.date_str or 'N/A' }}</p>
+                                <p><strong>Liga:</strong>
+                                    {% if match.league_id == 'a' %}
+                                    Liga A
+                                    {% elif match.league_id == 'b' %}
+                                    Liga B
+                                    {% else %}
+                                    {{ match.league_id or 'N/A' }}
+                                    {% endif %}
+                                </p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Prizorišče:</strong> {{ match.venue or 'N/A' }}</p>
+                                <p><strong>Tekma:</strong> {{ match.home_team }} vs {{ match.away_team }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Match Result Form -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Rezultat tekme</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('admin_update_match_result', result_id=result.id) }}">
+                            <div class="row mb-3">
+                                <div class="col-md-3">
+                                    <label for="home_score" class="form-label">{{ result.home_team_name or
+                                        match.home_team }}</label>
+                                    <input type="number" class="form-control" id="home_score" name="home_score"
+                                        value="{{ result.home_score or 0 }}" min="0" max="20" required>
+                                </div>
+                                <div class="col-md-1 text-center align-self-end">
+                                    <span class="fs-4">:</span>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="away_score" class="form-label">{{ result.away_team_name or
+                                        match.away_team }}</label>
+                                    <input type="number" class="form-control" id="away_score" name="away_score"
+                                        value="{{ result.away_score or 0 }}" min="0" max="20" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="status" class="form-label">Status</label>
+                                    <select class="form-select" id="status" name="status">
+                                        <option value="scheduled" {{ 'selected' if result.status=='scheduled' }}>
+                                            Načrtovana</option>
+                                        <option value="finished" {{ 'selected' if result.status=='finished' }}>Končana
+                                        </option>
+                                        <option value="cancelled" {{ 'selected' if result.status=='cancelled' }}>
+                                            Odpovedana</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 align-self-end">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save"></i> Shrani
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label for="referee" class="form-label">Sodnik</label>
+                                    <input type="text" class="form-control" id="referee" name="referee"
+                                        value="{{ result.referee or '' }}" placeholder="Ime sodnika">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="notes" class="form-label">Opombe</label>
+                                    <input type="text" class="form-control" id="notes" name="notes"
+                                        value="{{ result.notes or '' }}" placeholder="Dodatne opombe">
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Goals Section -->
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Goli</h5>
+                                <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal"
+                                    data-bs-target="#addGoalModal">
+                                    <i class="fas fa-plus"></i> Dodaj gol
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                {% if goals %}
+                                <div class="list-group">
+                                    {% for goal in goals %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ goal.minute }}'</strong>
+                                            {{ goal.player_name }}
+                                            {% if goal.jersey_number %}({{ goal.jersey_number }}){% endif %}
+                                            <small class="text-muted">({{ goal.team_name }})</small>
+                                            {% if goal.goal_type != 'regular' %}
+                                            <span class="badge bg-info">{{ goal.goal_type }}</span>
+                                            {% endif %}
+                                            {% if goal.assist_player_name %}
+                                            <small class="text-muted">- asist: {{ goal.assist_player_name }}</small>
+                                            {% endif %}
+                                        </div>
+                                        <form method="POST" action="{{ url_for('admin_delete_goal', goal_id=goal.id) }}"
+                                            style="display: inline;"
+                                            onsubmit="return confirm('Ste prepričani, da želite odstraniti ta gol?');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <p class="text-muted">Še ni dodanih golov.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cards Section -->
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0">Kartoni</h5>
+                                <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal"
+                                    data-bs-target="#addCardModal">
+                                    <i class="fas fa-plus"></i> Dodaj karton
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                {% if cards %}
+                                <div class="list-group">
+                                    {% for card in cards %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <strong>{{ card.minute }}'</strong>
+                                            {{ card.player_name }}
+                                            {% if card.jersey_number %}({{ card.jersey_number }}){% endif %}
+                                            <small class="text-muted">({{ card.team_name }})</small>
+                                            <span
+                                                class="badge bg-{{ 'danger' if card.card_type == 'red' else 'warning' }}">
+                                                {{ 'Rdeči' if card.card_type == 'red' else 'Rumeni' }}
+                                            </span>
+                                            {% if card.reason %}
+                                            <small class="text-muted">- {{ card.reason }}</small>
+                                            {% endif %}
+                                        </div>
+                                        <form method="POST" action="{{ url_for('admin_delete_card', card_id=card.id) }}"
+                                            style="display: inline;"
+                                            onsubmit="return confirm('Ste prepričani, da želite odstraniti ta karton?');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </form>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <p class="text-muted">Še ni dodanih kartonov.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Add Goal Modal -->
+    <div class="modal fade" id="addGoalModal" tabindex="-1" aria-labelledby="addGoalModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addGoalModalLabel">Dodaj gol</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('admin_add_goal', result_id=result.id) }}">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="goal_team" class="form-label">Ekipa</label>
+                            <select class="form-select" id="goal_team" name="team_id" required
+                                onchange="updateGoalPlayers()">
+                                <option value="">Izberi ekipo</option>
+                                <option value="{{ result.home_team_id }}">{{ result.home_team_name or match.home_team }}
+                                </option>
+                                <option value="{{ result.away_team_id }}">{{ result.away_team_name or match.away_team }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="goal_player" class="form-label">Igralec</label>
+                            <select class="form-select" id="goal_player" name="player_id" required>
+                                <option value="">Najprej izberi ekipo</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="goal_minute" class="form-label">Minuta</label>
+                            <input type="number" class="form-control" id="goal_minute" name="minute" min="1" max="120"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="goal_type" class="form-label">Tip gola</label>
+                            <select class="form-select" id="goal_type" name="goal_type">
+                                <option value="regular">Redni gol</option>
+                                <option value="penalty">Enajstmetrovka</option>
+                                <option value="own_goal">Lastni gol</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="assist_player" class="form-label">Asistent (neobvezno)</label>
+                            <select class="form-select" id="assist_player" name="assist_player_id">
+                                <option value="">Ni asistenta</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Prekliči</button>
+                        <button type="submit" class="btn btn-success">Dodaj gol</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Card Modal -->
+    <div class="modal fade" id="addCardModal" tabindex="-1" aria-labelledby="addCardModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addCardModalLabel">Dodaj karton</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('admin_add_card', result_id=result.id) }}">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="card_team" class="form-label">Ekipa</label>
+                            <select class="form-select" id="card_team" name="team_id" required
+                                onchange="updateCardPlayers()">
+                                <option value="">Izberi ekipo</option>
+                                <option value="{{ result.home_team_id }}">{{ result.home_team_name or match.home_team }}
+                                </option>
+                                <option value="{{ result.away_team_id }}">{{ result.away_team_name or match.away_team }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="card_player" class="form-label">Igralec</label>
+                            <select class="form-select" id="card_player" name="player_id" required>
+                                <option value="">Najprej izberi ekipo</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="card_type" class="form-label">Tip kartona</label>
+                            <select class="form-select" id="card_type" name="card_type" required>
+                                <option value="yellow">Rumeni karton</option>
+                                <option value="red">Rdeči karton</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="card_minute" class="form-label">Minuta</label>
+                            <input type="number" class="form-control" id="card_minute" name="minute" min="1" max="120"
+                                required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="card_reason" class="form-label">Razlog (neobvezno)</label>
+                            <input type="text" class="form-control" id="card_reason" name="reason"
+                                placeholder="Razlog za karton">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Prekliči</button>
+                        <button type="submit" class="btn btn-warning">Dodaj karton</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Player data for dropdowns
+        const homePlayers = {{ home_players | tojson }};
+        const awayPlayers = {{ away_players | tojson }};
+
+        function updateGoalPlayers() {
+            const teamSelect = document.getElementById('goal_team');
+            const playerSelect = document.getElementById('goal_player');
+            const assistSelect = document.getElementById('assist_player');
+
+            playerSelect.innerHTML = '<option value="">Izberi igralca</option>';
+            assistSelect.innerHTML = '<option value="">Ni asistenta</option>';
+
+            let players = [];
+            if (teamSelect.value == '{{ result.home_team_id }}') {
+                players = homePlayers;
+            } else if (teamSelect.value == '{{ result.away_team_id }}') {
+                players = awayPlayers;
+            }
+
+            players.forEach(player => {
+                const option1 = document.createElement('option');
+                option1.value = player.id;
+                option1.textContent = `${player.name}${player.jersey_number ? ' (' + player.jersey_number + ')' : ''}`;
+                playerSelect.appendChild(option1);
+
+                const option2 = document.createElement('option');
+                option2.value = player.id;
+                option2.textContent = `${player.name}${player.jersey_number ? ' (' + player.jersey_number + ')' : ''}`;
+                assistSelect.appendChild(option2);
+            });
+        }
+
+        function updateCardPlayers() {
+            const teamSelect = document.getElementById('card_team');
+            const playerSelect = document.getElementById('card_player');
+
+            playerSelect.innerHTML = '<option value="">Izberi igralca</option>';
+
+            let players = [];
+            if (teamSelect.value == '{{ result.home_team_id }}') {
+                players = homePlayers;
+            } else if (teamSelect.value == '{{ result.away_team_id }}') {
+                players = awayPlayers;
+            }
+
+            players.forEach(player => {
+                const option = document.createElement('option');
+                option.value = player.id;
+                option.textContent = `${player.name}${player.jersey_number ? ' (' + player.jersey_number + ')' : ''}`;
+                playerSelect.appendChild(option);
+            });
+        }
+    </script>
+</body>
+
+</html>

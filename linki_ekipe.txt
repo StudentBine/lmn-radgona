@@ -1,0 +1,33 @@
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/baren
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/dinamo-radgona
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/ivanjsevska-slatina
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/kapela
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/lesane
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/lokavec
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/negova
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/oceslavci
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/plitvica
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/podgrad
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/radenska
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/spodnja-scavnica
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/stari-hrast
+https://www.lmn-radgona.si/ct-menu-item-7/2017-08-30-08-49-47/tiha-voda
+
+In za b Ligo:
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/bumefekt
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/cresnjevci
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/grabonos
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/hrastko
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/ihova
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/mahovci
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/police
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/porkys
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/segovci
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/stavesinci
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/senekar
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/vrabel
+https://www.lmn-radgona.si/2017-08-11-13-54-06/2017-08-30-09-01-58/zoro
+
+BUG: napaka pri nalaganji lestvice B - samo mislin ka je to blo zaradi cronjoba ka je
+oboje naenkrat zva zaj pa ma 5min intervala vmes
+DODATEK: cachiranje mislin ka je zginlo za lestvice.. rabi en cajt ka se naložijo

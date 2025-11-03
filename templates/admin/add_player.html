@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="sl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dodaj igralca - Admin Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #1a3e72;
+            --secondary-color: #3a86ff;
+        }
+
+        body {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #2a5298 100%);
+        }
+
+        .form-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            border: none;
+        }
+
+        .team-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{{ url_for('admin_dashboard') }}">
+                <i class="fas fa-shield-alt me-2"></i>Admin Panel
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    <i class="fas fa-user me-1"></i>{{ session.admin_username }}
+                </span>
+                <a href="{{ url_for('admin_dashboard') }}" class="nav-link">
+                    <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                </a>
+                <a href="{{ url_for('admin_logout') }}" class="nav-link">
+                    <i class="fas fa-sign-out-alt me-1"></i>Odjava
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center mb-4">
+                    <a href="{{ url_for('admin_team_players', team_id=team.id) if team else url_for('admin_players') }}"
+                        class="btn btn-outline-secondary me-3">
+                        <i class="fas fa-arrow-left me-1"></i>Nazaj
+                    </a>
+                    <h2 class="fw-bold mb-0">
+                        <i class="fas fa-user-plus me-2 text-primary"></i>Dodaj novega igralca
+                    </h2>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div
+                    class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                {% if team %}
+                <div class="team-info">
+                    <h6><i class="fas fa-info-circle me-1"></i>Dodajaš igralca v ekipo</h6>
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-shield-alt me-2 text-primary"></i>
+                        <strong>{{ team.name }}</strong>
+                        <span class="badge bg-{{ 'success' if team.league_id == 'liga_a' else 'info' }} ms-2">
+                            {{ 'Liga A' if team.league_id == 'liga_a' else 'Liga B' }}
+                        </span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="form-card">
+                    <form method="POST">
+                        <div class="row">
+                            <div class="col-md-8 mb-3">
+                                <label for="name" class="form-label">
+                                    <i class="fas fa-user me-1"></i>Ime in priimek igralca *
+                                </label>
+                                <input type="text" class="form-control" id="name" name="name" required minlength="2"
+                                    maxlength="100" value="{{ request.form.get('name', '') }}"
+                                    placeholder="Vnesi polno ime igralca">
+                                <div class="form-text">Vnesite ime in priimek igralca</div>
+                            </div>
+
+                            <div class="col-md-4 mb-3">
+                                <label for="jersey_number" class="form-label">
+                                    <i class="fas fa-hashtag me-1"></i>Številka dresa
+                                </label>
+                                <input type="number" class="form-control" id="jersey_number" name="jersey_number"
+                                    min="1" max="99" value="{{ request.form.get('jersey_number', '') }}"
+                                    placeholder="1-99">
+                                <div class="form-text">Neobvezno (1-99)</div>
+                            </div>
+                        </div>
+
+                        {% if not team %}
+                        <div class="mb-3">
+                            <label for="team_id" class="form-label">
+                                <i class="fas fa-shield-alt me-1"></i>Ekipa *
+                            </label>
+                            <select class="form-select" id="team_id" name="team_id" required>
+                                <option value="">Izberi ekipo</option>
+                                {% for team_option in teams %}
+                                <option value="{{ team_option.id }}" {{ 'selected' if
+                                    request.form.get('team_id')|int==team_option.id else '' }}>
+                                    {{ team_option.name }} ({{ 'Liga A' if team_option.league_id == 'liga_a' else 'Liga
+                                    B' }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Izberi ekipo za igralca</div>
+                        </div>
+                        {% else %}
+                        <input type="hidden" name="team_id" value="{{ team.id }}">
+                        {% endif %}
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('admin_team_players', team_id=team.id) if team else url_for('admin_players') }}"
+                                class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-1"></i>Prekliči
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>Ustvari igralca
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
