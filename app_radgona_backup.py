@@ -241,7 +241,7 @@ def index():
     return redirect(url_for('home'))
 
 
-@cache.cached(timeout=180, query_string=True)  # Reduced cache time for faster updates
+@cache.cached(timeout=300, query_string=True)
 @app.route('/league/<league_id>/results', methods=['GET', 'POST'])
 def show_league_results(league_id):
     try:
@@ -383,9 +383,7 @@ def show_league_results(league_id):
                 # Show the most recent matches
                 page_matches = fallback_matches[-6:] if len(fallback_matches) > 6 else fallback_matches
                 logger.info(f"Using {len(page_matches)} fallback matches for {league_id}")
-                if not round_details:
-                    round_details = {'name': 'Zadnje tekme', 'url': target_round_url}
-                else:
+                if round_details:
                     round_details['name'] = f"Zadnje tekme ({round_details.get('name', 'neznano')})"
 
         grouped_data = defaultdict(list)
@@ -570,7 +568,88 @@ def fix_missing_teams(league_id):
         logger.error(f"Error fixing teams for {league_id}: {str(e)}")
         return f"Error: {str(e)}", 500
 
+@app.route('/admin/debug')
+def debug_panel():
+    """Main debug panel"""
+    return render_template('debug.html')
 
+@app.route('/admin/debug/<league_id>')
+def debug_league(league_id):
+    """Debug route to show league data"""
+    if league_id not in LEAGUES_CONFIG:
+        return "Invalid league ID", 404
+    
+    try:
+        # Get data from database
+        all_matches = database.get_all_matches_for_league(league_id)
+        rounds = database.get_cached_rounds(league_id)
+        leaderboard = database.get_cached_leaderboard(league_id)
+        
+        # Get unique teams from database
+        teams_from_db = database.get_all_teams_for_league(league_id)
+        teams_from_matches = list(set([m['home_team'] for m in all_matches] + [m['away_team'] for m in all_matches])) if all_matches else []
+        
+        debug_info = {
+            'league_id': league_id,
+            'league_name': LEAGUES_CONFIG[league_id]['name'],
+            'total_matches': len(all_matches) if all_matches else 0,
+            'rounds_count': len(rounds) if rounds else 0,
+            'leaderboard_teams': len(leaderboard) if leaderboard else 0,
+            'sample_matches': all_matches[:3] if all_matches else [],
+            'teams_from_database': teams_from_db,
+            'teams_from_matches': teams_from_matches,
+            'expected_teams_liga_a': ['Spodnja Ščavnica', 'Tiha voda', 'Lokavec', 'Podgrad', 'Plitvica', 'Negova', 'Očeslavci', 'Stari hrast', 'Baren', 'Radenska', 'Kapela', 'Ivanjševska slatina', 'Dinamo Radgona', 'Lešane'] if league_id == 'liga_a' else [],
+            'expected_teams_liga_b': ['Ihova', 'Grabonoš', 'Police', 'Bumefekt', 'Mahovci', 'Šenekar', 'Stavešinci', 'Segovci', 'Vrabel', 'Zoro', 'Hrastko', 'Porkys', 'Črešnjevci'] if league_id == 'liga_b' else []
+        }
+        
+        return f"<pre>{json.dumps(debug_info, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        return f"Debug error: {str(e)}", 500
+
+@app.route('/admin/test-scraper/<league_id>')
+def test_scraper(league_id):
+    """Test scraper manually for debugging"""
+    if league_id not in LEAGUES_CONFIG:
+        return "Invalid league ID", 404
+    
+    try:
+        url = LEAGUES_CONFIG[league_id]['main_results_page_url']
+        start_time = datetime.now()
+        
+        # Test single page scrape first (no fetch all rounds)
+        page_matches, _, rounds, current_round = fetch_lmn_radgona_data(url, fetch_all_rounds_data=False)
+        
+        # If single page works, try fetch all rounds
+        all_matches = None
+        if page_matches:
+            try:
+                _, all_matches, _, _ = fetch_lmn_radgona_data(url, fetch_all_rounds_data=True)
+            except Exception as e:
+                logger.error(f"Failed to fetch all rounds: {e}")
+        
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        
+        result = {
+            'status': 'success',
+            'league_id': league_id,
+            'url': url,
+            'duration_seconds': duration,
+            'page_matches_count': len(page_matches) if page_matches else 0,
+            'all_matches_count': len(all_matches) if all_matches else 0,
+            'rounds_count': len(rounds) if rounds else 0,
+            'current_round': current_round,
+            'sample_matches': (page_matches or [])[:3]
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        logger.error(f"Test scraper error for {league_id}: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error testing scraper: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
 
 @app.route('/admin/env-check')
 def env_check():
@@ -656,6 +735,8 @@ def admin_status():
         <h3>Quick Actions</h3>
         <p><a href="/admin/toggle-scraping">Toggle Scraping</a></p>
         <p><a href="/admin/env-check">Environment Check</a></p>
+        <p><a href="/admin/debug-cache/liga_a">Debug Liga A Cache</a></p>
+        <p><a href="/admin/debug-cache/liga_b">Debug Liga B Cache</a></p>
         <p><a href="/admin/clear-cache/liga_a">Clear Liga A Cache</a></p>
         <p><a href="/admin/clear-cache/liga_b">Clear Liga B Cache</a></p>
         <p><a href="/league/liga_a/results">Liga A Results</a></p>
@@ -668,6 +749,268 @@ def admin_status():
         
     except Exception as e:
         return f"<pre>Error: {str(e)}</pre>", 500
+
+@app.route('/admin/debug-cache/<league_id>')
+def debug_cache(league_id):
+    """Debug cache contents for a league"""
+    try:
+        if league_id not in LEAGUES_CONFIG:
+            return "Invalid league ID", 404
+        
+        # Get all cached data
+        all_matches = database.get_all_matches_for_league(league_id) or []
+        rounds = database.get_cached_rounds(league_id) or []
+        leaderboard = database.get_cached_leaderboard(league_id)
+        
+        # Get a sample of round matches
+        round_matches_sample = {}
+        if rounds:
+            for round_info in rounds[-3:]:  # Last 3 rounds
+                round_url = round_info.get('url')
+                if round_url:
+                    matches = database.get_cached_round_matches(league_id, round_url)
+                    round_matches_sample[round_info.get('name', 'Unknown')] = len(matches) if matches else 0
+        
+        debug_info = {
+            'league_id': league_id,
+            'total_matches': len(all_matches),
+            'total_rounds': len(rounds),
+            'leaderboard_teams': len(leaderboard) if leaderboard else 0,
+            'recent_rounds': [r.get('name', 'Unknown') for r in rounds[-5:]] if rounds else [],
+            'round_matches_sample': round_matches_sample,
+            'sample_matches': [
+                {
+                    'round': m.get('round_name', 'N/A'),
+                    'date': m.get('date_str', 'N/A'),
+                    'match': f"{m.get('home_team', 'N/A')} vs {m.get('away_team', 'N/A')}",
+                    'score': m.get('score_str', 'N/A')
+                }
+                for m in all_matches[-5:]  # Last 5 matches
+            ] if all_matches else []
+        }
+        
+        return f"<pre>{json.dumps(debug_info, indent=2, ensure_ascii=False)}</pre>"
+        
+    except Exception as e:
+        return f"<pre>Debug error: {str(e)}</pre>", 500
+
+@app.route('/admin/mobile-fallback-test')
+def mobile_fallback_test():
+    """Test mobile user agent as fallback for bot detection"""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+        
+        # Mobile user agent (often less scrutinized by bot detection)
+        mobile_headers = {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        
+        logger.info(f"Testing mobile fallback for: {url}")
+        start_time = time.time()
+        
+        session = requests.Session()
+        session.headers.update(mobile_headers)
+        
+        response = session.get(url, timeout=25)
+        duration = time.time() - start_time
+        
+        # Check for challenge
+        challenge_detected = "One moment, please" in response.text
+        
+        # Parse content
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.find('title')
+        fixtures_table = soup.find('table', class_='fixtures-results')
+        all_tables = soup.find_all('table')
+        
+        result = {
+            'test_type': 'mobile_fallback_test',
+            'timestamp': datetime.now().isoformat(),
+            'url': url,
+            'status_code': response.status_code,
+            'content_length': len(response.text),
+            'duration_seconds': duration,
+            'challenge_detected': challenge_detected,
+            'title': title.get_text(strip=True) if title else 'No title',
+            'fixtures_table_found': fixtures_table is not None,
+            'total_tables': len(all_tables),
+            'user_agent': 'Mobile Safari (iPhone)'
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        logger.error(f"Mobile fallback test error: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error in mobile fallback test: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
+@app.route('/admin/force-debug-test')
+def force_debug_test():
+    """Force debug mode and test the scraper"""
+    try:
+        # Temporarily enable debug mode
+        original_debug = os.environ.get('SCRAPER_DEBUG', 'false')
+        os.environ['SCRAPER_DEBUG'] = 'true'
+        
+        # Test Liga A URL
+        url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+        
+        logger.info(f"Starting forced debug test for: {url}")
+        start_time = time.time()
+        
+        from scraper_radgona import fetch_lmn_radgona_data
+        
+        page_matches, all_matches, rounds, current_round = fetch_lmn_radgona_data(url)
+        
+        duration = time.time() - start_time
+        
+        # Restore original debug setting
+        os.environ['SCRAPER_DEBUG'] = original_debug
+        
+        result = {
+            'test_type': 'forced_debug_test',
+            'timestamp': datetime.now().isoformat(),
+            'url': url,
+            'debug_enabled': True,
+            'duration_seconds': duration,
+            'page_matches_count': len(page_matches) if page_matches else 0,
+            'rounds_count': len(rounds) if rounds else 0,
+            'current_round': current_round,
+            'sample_matches': (page_matches or [])[:2]
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        # Restore debug setting in case of error
+        if 'original_debug' in locals():
+            os.environ['SCRAPER_DEBUG'] = original_debug
+            
+        logger.error(f"Force debug test error: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error in force debug test: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
+@app.route('/admin/raw-request-test')
+def raw_request_test():
+    """Test raw HTTP request to see exactly what we get in production"""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+        
+        # Use the exact same headers as our scraper
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+        
+        logger.info(f"Making raw request to: {url}")
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Check for fixtures table
+        fixtures_table = soup.find('table', class_='fixtures-results')
+        all_tables = soup.find_all('table')
+        
+        # Get page title
+        title = soup.find('title')
+        title_text = title.get_text(strip=True) if title else "No title found"
+        
+        result = {
+            'timestamp': datetime.now().isoformat(),
+            'url': url,
+            'status_code': response.status_code,
+            'content_length': len(response.text),
+            'content_type': response.headers.get('content-type', 'unknown'),
+            'title': title_text,
+            'fixtures_table_found': fixtures_table is not None,
+            'total_tables': len(all_tables),
+            'table_classes': [table.get('class', []) for table in all_tables[:5]],
+            'first_1000_chars': response.text[:1000],
+            'headers_sent': dict(headers),
+            'response_headers': dict(response.headers)
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        logger.error(f"Raw request test error: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error in raw request test: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
+@app.route('/admin/test-url/<league_id>')
+def test_url_direct(league_id):
+    """Test direct URL access"""
+    if league_id not in LEAGUES_CONFIG:
+        return "Invalid league ID", 404
+    
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        url = LEAGUES_CONFIG[league_id]['main_results_page_url']
+        
+        # Test basic request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        result = {
+            'url': url,
+            'status_code': response.status_code,
+            'content_type': response.headers.get('content-type', 'Unknown'),
+            'content_length': len(response.content),
+            'headers_sample': dict(list(response.headers.items())[:10])
+        }
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            result['title'] = soup.title.string if soup.title else 'No title'
+            
+            # Check for tables
+            tables = soup.find_all('table')
+            result['total_tables'] = len(tables)
+            
+            fixtures_table = soup.find('table', class_='fixtures-results')
+            result['has_fixtures_table'] = fixtures_table is not None
+            
+            if fixtures_table:
+                rows = fixtures_table.find_all('tr')
+                result['table_rows'] = len(rows)
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
 
 # Admin Routes
 @app.route('/admin/login', methods=['GET', 'POST'])
