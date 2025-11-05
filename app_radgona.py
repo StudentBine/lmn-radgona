@@ -602,6 +602,63 @@ def force_debug_test():
         tb = traceback.format_exc()
         return f"<pre>Error in force debug test: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
 
+@app.route('/admin/raw-request-test')
+def raw_request_test():
+    """Test raw HTTP request to see exactly what we get in production"""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+        
+        # Use the exact same headers as our scraper
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        }
+        
+        logger.info(f"Making raw request to: {url}")
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Check for fixtures table
+        fixtures_table = soup.find('table', class_='fixtures-results')
+        all_tables = soup.find_all('table')
+        
+        # Get page title
+        title = soup.find('title')
+        title_text = title.get_text(strip=True) if title else "No title found"
+        
+        result = {
+            'timestamp': datetime.now().isoformat(),
+            'url': url,
+            'status_code': response.status_code,
+            'content_length': len(response.text),
+            'content_type': response.headers.get('content-type', 'unknown'),
+            'title': title_text,
+            'fixtures_table_found': fixtures_table is not None,
+            'total_tables': len(all_tables),
+            'table_classes': [table.get('class', []) for table in all_tables[:5]],
+            'first_1000_chars': response.text[:1000],
+            'headers_sent': dict(headers),
+            'response_headers': dict(response.headers)
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        logger.error(f"Raw request test error: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error in raw request test: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
 @app.route('/admin/test-url/<league_id>')
 def test_url_direct(league_id):
     """Test direct URL access"""
