@@ -232,6 +232,7 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
             'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
             'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Charset': 'UTF-8,*;q=0.8',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
             'Sec-Fetch-Dest': 'document',
@@ -244,6 +245,7 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
             'Accept-Language': 'sl-SI,sl;q=0.8,en-US;q=0.5,en;q=0.3',
             'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Charset': 'UTF-8,*;q=0.8',
             'DNT': '1',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
@@ -261,6 +263,7 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
             'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Charset': 'UTF-8,*;q=0.8',
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache',
             'DNT': '1',
@@ -337,11 +340,14 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                         'Upgrade-Insecure-Requests': '1'
                     }
                 elif attempt == 4:
-                    # Fifth attempt: Minimal headers like a bot that might be whitelisted
+                    # Fifth attempt: Very simple headers to avoid 415 errors
                     session.headers = {
-                        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-                        'Accept': '*/*',
-                        'Accept-Language': 'en',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate',
+                        'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.3',
+                        'Connection': 'keep-alive'
                     }
                 
                 # Progressive delay: longer waits for later attempts
@@ -402,7 +408,7 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                         if attempt == 4:
                             raise Exception(f"Invalid content: {content_type}, length: {len(response.content)}")
                         continue
-                elif response.status_code in [403, 503]:  # Typical bot blocking codes
+                elif response.status_code in [403, 415, 503]:  # Typical bot blocking codes including 415
                     if debug_mode:
                         print(f"[DEBUG] Bot blocking detected: HTTP {response.status_code}")
                     if attempt == 4:
@@ -411,6 +417,10 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                 else:
                     if debug_mode:
                         print(f"[DEBUG] HTTP {response.status_code}: {response.reason}")
+                    if response.status_code >= 400:
+                        if attempt == 4:
+                            raise Exception(f"HTTP {response.status_code}: {response.reason}")
+                        continue
                     response.raise_for_status()
                     
             except requests.exceptions.RequestException as e:

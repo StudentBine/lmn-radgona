@@ -13,12 +13,14 @@ SECRET_KEY=your_secure_random_secret_key_here
 FLASK_ENV=production
 ```
 
-### 3. Scraping Configuration (New)
+### 3. Scraping Configuration (New - IMPORTANT)
 ```
 SCRAPER_DEBUG=false
 SCRAPER_MAX_WORKERS=2
-ENABLE_SCRAPING=true
+ENABLE_SCRAPING=false
 ```
+
+**Note**: Set ENABLE_SCRAPING=false initially to avoid 415 errors and timeouts. The app will use cached data.
 
 ### 4. Optional: Redis Cache (if using Redis)
 ```
@@ -49,10 +51,16 @@ After deployment, you can test:
 - `/league/liga_a/leaderboard?force=true` - Forces fresh data fetch
 - `/admin/clear-cache/liga_a` - Clears cache to test scraping
 
-## If Cloudflare continues blocking:
+## Fixes Applied:
 
-Set `ENABLE_SCRAPING=false` to rely entirely on cached data until you can:
-1. Implement proxy rotation
-2. Add CAPTCHA solving service
-3. Use a different hosting provider with different IP ranges
-4. Contact the website owner for API access
+1. **HTTP 415 Error**: Added Accept-Charset headers and simplified retry headers
+2. **Worker Timeouts**: Added 10s timeout for web requests, 15s for background tasks
+3. **Graceful Degradation**: App now defaults to cached data when scraping fails
+4. **Production Safety**: Scraping disabled by default in production environment
+
+## If Issues Persist:
+
+1. **First**: Keep `ENABLE_SCRAPING=false` - app works entirely on cached data
+2. **Test scraping**: Use `/admin/toggle-scraping` to enable temporarily
+3. **Monitor**: Use `/admin/status` to check app health
+4. **Long-term**: Consider proxy services or API access from site owner
