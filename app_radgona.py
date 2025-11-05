@@ -342,11 +342,32 @@ def show_league_results(league_id):
                         round_details = {'name': 'Napaka pri nalaganju', 'url': target_round_url}
             else:
                 logger.info(f"Scraping disabled, using cached data only for {target_round_url}")
-                page_matches = []
+                # Try to get any available matches from the league instead of empty list
+                all_league_matches = database.get_all_matches_for_league(league_id)
+                if all_league_matches:
+                    # Filter matches for the current round if possible, otherwise show recent matches
+                    if round_details and round_details.get('name'):
+                        page_matches = [m for m in all_league_matches if m.get('round_name') == round_details['name']]
+                    if not page_matches:
+                        # Show the most recent matches (last 10) if no specific round matches
+                        page_matches = all_league_matches[-10:] if len(all_league_matches) > 10 else all_league_matches
+                    logger.info(f"Using {len(page_matches)} cached matches for {league_id}")
+                else:
+                    page_matches = []
                 if not round_details:
                     round_details = {'name': 'Predpomnjeni podatki', 'url': target_round_url}
         elif not round_details:
             round_details = {'name': 'Krog (iz predpomn.)', 'url': target_round_url}
+        
+        # Final fallback: if still no page_matches, try to get any matches for the league
+        if not page_matches:
+            fallback_matches = database.get_all_matches_for_league(league_id)
+            if fallback_matches:
+                # Show the most recent matches
+                page_matches = fallback_matches[-6:] if len(fallback_matches) > 6 else fallback_matches
+                logger.info(f"Using {len(page_matches)} fallback matches for {league_id}")
+                if round_details:
+                    round_details['name'] = f"Zadnje tekme ({round_details.get('name', 'neznano')})"
 
         grouped_data = defaultdict(list)
         for match in page_matches:
@@ -660,13 +681,17 @@ def admin_status():
         
         # Get some stats from database
         try:
-            liga_a_matches = len(database.get_all_matches_for_league('liga_a') or [])
-            liga_b_matches = len(database.get_all_matches_for_league('liga_b') or [])
+            liga_a_matches = database.get_all_matches_for_league('liga_a') or []
+            liga_b_matches = database.get_all_matches_for_league('liga_b') or []
             liga_a_leaderboard = database.get_cached_leaderboard('liga_a')
             liga_b_leaderboard = database.get_cached_leaderboard('liga_b')
-        except:
-            liga_a_matches = liga_b_matches = 0
+            liga_a_rounds = database.get_cached_rounds('liga_a') or []
+            liga_b_rounds = database.get_cached_rounds('liga_b') or []
+        except Exception as e:
+            logger.error(f"Error getting status data: {e}")
+            liga_a_matches = liga_b_matches = []
             liga_a_leaderboard = liga_b_leaderboard = None
+            liga_a_rounds = liga_b_rounds = []
         
         status_info = {
             'timestamp': datetime.now().isoformat(),
@@ -674,10 +699,16 @@ def admin_status():
             'is_production': is_production,
             'effective_scraping': scraping_enabled and not is_production,
             'cached_data': {
-                'liga_a_matches': liga_a_matches,
-                'liga_b_matches': liga_b_matches,
+                'liga_a_matches': len(liga_a_matches),
+                'liga_b_matches': len(liga_b_matches),
+                'liga_a_rounds': len(liga_a_rounds),
+                'liga_b_rounds': len(liga_b_rounds),
                 'liga_a_leaderboard_teams': len(liga_a_leaderboard) if liga_a_leaderboard else 0,
-                'liga_b_leaderboard_teams': len(liga_b_leaderboard) if liga_b_leaderboard else 0
+                'liga_b_leaderboard_teams': len(liga_b_leaderboard) if liga_b_leaderboard else 0,
+                'sample_liga_a_matches': [
+                    f"{m.get('round_name', 'N/A')}: {m.get('home_team', 'N/A')} vs {m.get('away_team', 'N/A')} ({m.get('score_str', 'N/A')})"
+                    for m in liga_a_matches[-3:]
+                ] if liga_a_matches else []
             }
         }
         
@@ -687,8 +718,12 @@ def admin_status():
         <h3>Quick Actions</h3>
         <p><a href="/admin/toggle-scraping">Toggle Scraping</a></p>
         <p><a href="/admin/env-check">Environment Check</a></p>
+        <p><a href="/admin/debug-cache/liga_a">Debug Liga A Cache</a></p>
+        <p><a href="/admin/debug-cache/liga_b">Debug Liga B Cache</a></p>
         <p><a href="/admin/clear-cache/liga_a">Clear Liga A Cache</a></p>
         <p><a href="/admin/clear-cache/liga_b">Clear Liga B Cache</a></p>
+        <p><a href="/league/liga_a/results">Liga A Results</a></p>
+        <p><a href="/league/liga_b/results">Liga B Results</a></p>
         <p><a href="/league/liga_a/leaderboard">Liga A Leaderboard</a></p>
         <p><a href="/league/liga_b/leaderboard">Liga B Leaderboard</a></p>
         """
@@ -697,6 +732,50 @@ def admin_status():
         
     except Exception as e:
         return f"<pre>Error: {str(e)}</pre>", 500
+
+@app.route('/admin/debug-cache/<league_id>')
+def debug_cache(league_id):
+    """Debug cache contents for a league"""
+    try:
+        if league_id not in LEAGUES_CONFIG:
+            return "Invalid league ID", 404
+        
+        # Get all cached data
+        all_matches = database.get_all_matches_for_league(league_id) or []
+        rounds = database.get_cached_rounds(league_id) or []
+        leaderboard = database.get_cached_leaderboard(league_id)
+        
+        # Get a sample of round matches
+        round_matches_sample = {}
+        if rounds:
+            for round_info in rounds[-3:]:  # Last 3 rounds
+                round_url = round_info.get('url')
+                if round_url:
+                    matches = database.get_cached_round_matches(league_id, round_url)
+                    round_matches_sample[round_info.get('name', 'Unknown')] = len(matches) if matches else 0
+        
+        debug_info = {
+            'league_id': league_id,
+            'total_matches': len(all_matches),
+            'total_rounds': len(rounds),
+            'leaderboard_teams': len(leaderboard) if leaderboard else 0,
+            'recent_rounds': [r.get('name', 'Unknown') for r in rounds[-5:]] if rounds else [],
+            'round_matches_sample': round_matches_sample,
+            'sample_matches': [
+                {
+                    'round': m.get('round_name', 'N/A'),
+                    'date': m.get('date_str', 'N/A'),
+                    'match': f"{m.get('home_team', 'N/A')} vs {m.get('away_team', 'N/A')}",
+                    'score': m.get('score_str', 'N/A')
+                }
+                for m in all_matches[-5:]  # Last 5 matches
+            ] if all_matches else []
+        }
+        
+        return f"<pre>{json.dumps(debug_info, indent=2, ensure_ascii=False)}</pre>"
+        
+    except Exception as e:
+        return f"<pre>Debug error: {str(e)}</pre>", 500
 
 @app.route('/admin/mobile-fallback-test')
 def mobile_fallback_test():
