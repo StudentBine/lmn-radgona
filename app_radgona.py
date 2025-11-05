@@ -251,12 +251,19 @@ def show_league_results(league_id):
         initial_page_round_info = None
 
         if not available_rounds:
-            _, _, scraped_rounds, scraped_initial = fetch_lmn_radgona_data(
-                league_config["main_results_page_url"], fetch_all_rounds_data=False, league_id_for_caching=league_id)
-            if scraped_rounds:
-                available_rounds = scraped_rounds
-                initial_page_round_info = scraped_initial
-                database.cache_rounds(league_id, scraped_rounds)
+            try:
+                _, _, scraped_rounds, scraped_initial = fetch_lmn_radgona_data(
+                    league_config["main_results_page_url"], fetch_all_rounds_data=False, league_id_for_caching=league_id)
+                if scraped_rounds:
+                    available_rounds = scraped_rounds
+                    initial_page_round_info = scraped_initial
+                    database.cache_rounds(league_id, scraped_rounds)
+                    logger.info(f"Successfully scraped {len(scraped_rounds)} rounds for {league_id}")
+                else:
+                    logger.warning(f"No rounds scraped for {league_id}")
+            except Exception as scrape_error:
+                logger.error(f"Failed to scrape rounds for {league_id}: {scrape_error}")
+                available_rounds = []
         else:
             if target_round_url == league_config["main_results_page_url"]:
                 _, _, _, temp_initial = fetch_lmn_radgona_data(league_config["main_results_page_url"], False, league_id_for_caching=league_id)
@@ -269,13 +276,21 @@ def show_league_results(league_id):
         round_details = next((r for r in available_rounds or [] if r['url'] == target_round_url), None)
 
         if page_matches is None:
-            scraped_matches, _, _, scraped_round_info = fetch_lmn_radgona_data(
-                target_round_url, fetch_all_rounds_data=False, league_id_for_caching=league_id)
-            if scraped_matches:
-                database.cache_matches(league_id, target_round_url, scraped_matches)
-                page_matches = scraped_matches
-                round_details = scraped_round_info
-            else:
+            try:
+                scraped_matches, _, _, scraped_round_info = fetch_lmn_radgona_data(
+                    target_round_url, fetch_all_rounds_data=False, league_id_for_caching=league_id)
+                if scraped_matches:
+                    database.cache_matches(league_id, target_round_url, scraped_matches)
+                    page_matches = scraped_matches
+                    round_details = scraped_round_info
+                    logger.info(f"Successfully scraped {len(scraped_matches)} matches for round")
+                else:
+                    logger.warning(f"No matches scraped for round {target_round_url}")
+                    page_matches = []
+                    if not round_details:
+                        round_details = {'name': 'Ni podatkov', 'url': target_round_url}
+            except Exception as scrape_error:
+                logger.error(f"Failed to scrape matches for {target_round_url}: {scrape_error}")
                 page_matches = []
                 if not round_details:
                     round_details = {'name': 'Napaka pri nalaganju', 'url': target_round_url}
@@ -335,9 +350,21 @@ def show_leaderboard(league_id):
                     if scraped:
                         database.cache_matches(league_id, current_round_info['url'], scraped)
             # Parallel scrape all rounds for leaderboard
-            _, all_matches, _, _ = fetch_lmn_radgona_data(
-                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True, league_id_for_caching=league_id)
-            all_matches = all_matches or database.get_all_matches_for_league(league_id)
+            try:
+                _, all_matches, _, _ = fetch_lmn_radgona_data(
+                    LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True, league_id_for_caching=league_id)
+                if all_matches:
+                    logger.info(f"Successfully scraped {len(all_matches)} matches for {league_id}")
+                else:
+                    logger.warning(f"No matches scraped for {league_id}, using cached data")
+                    all_matches = database.get_all_matches_for_league(league_id)
+            except Exception as scrape_error:
+                logger.error(f"Scraping failed for {league_id}: {scrape_error}")
+                # Uporabi cached podatke kot fallback
+                all_matches = database.get_all_matches_for_league(league_id)
+                if not all_matches:
+                    logger.warning(f"No cached data available for {league_id}")
+            
             leaderboard_data = calculate_leaderboard(all_matches, league_id)
             if leaderboard_data:
                 database.cache_leaderboard(league_id, leaderboard_data)
@@ -439,6 +466,40 @@ def debug_league(league_id):
         
     except Exception as e:
         return f"Debug error: {str(e)}", 500
+
+@app.route('/admin/test-scraper/<league_id>')
+def test_scraper(league_id):
+    """Test scraper manually for debugging"""
+    if league_id not in LEAGUES_CONFIG:
+        return "Invalid league ID", 404
+    
+    try:
+        url = LEAGUES_CONFIG[league_id]['main_results_page_url']
+        start_time = datetime.now()
+        
+        # Test single page scrape
+        page_matches, all_matches, rounds, current_round = fetch_lmn_radgona_data(url, fetch_all_rounds_data=True)
+        
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        
+        result = {
+            'status': 'success',
+            'league_id': league_id,
+            'url': url,
+            'duration_seconds': duration,
+            'page_matches_count': len(page_matches) if page_matches else 0,
+            'all_matches_count': len(all_matches) if all_matches else 0,
+            'rounds_count': len(rounds) if rounds else 0,
+            'current_round': current_round,
+            'sample_matches': (all_matches or page_matches)[:3] if (all_matches or page_matches) else []
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        logger.error(f"Test scraper error for {league_id}: {str(e)}")
+        return f"<pre>Error testing scraper: {str(e)}</pre>", 500
 
 
 # Admin Routes

@@ -1,8 +1,9 @@
 import requests
 from bs4 import BeautifulSoup
-from lxml import html
 import re
 import os
+import time
+import random
 from urllib.parse import urljoin
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -102,15 +103,20 @@ def _parse_matches_from_soup(soup_obj, round_name_for_match="N/A", round_url_sou
                     if match_time_span:
                         match_time = match_time_span.get_text(strip=True)
                     else:
-                        # Try XPath method as fallback
+                        # Try BeautifulSoup fallback for abbr tag
                         try:
-                            from lxml import html
-                            lxml_tree = html.fromstring(str(cells[1]))
-                            abbr_time = lxml_tree.xpath('//abbr/text()')
-                            if abbr_time:
-                                match_time = abbr_time[0].strip()
-                        except Exception as e_xpath:
-                            print(f"[XPath fallback error] Could not extract abbr time: {e_xpath}")
+                            abbr_tag = cells[1].find('abbr')
+                            if abbr_tag:
+                                match_time = abbr_tag.get_text(strip=True)
+                            else:
+                                # Poskusimo najti v vseh elementih časovnega stolpca
+                                all_text = cells[1].get_text(strip=True)
+                                # Preverimo za standardne formate ure (HH:MM)
+                                time_match = re.search(r'\b(\d{1,2}:\d{2})\b', all_text)
+                                if time_match:
+                                    match_time = time_match.group(1)
+                        except Exception as e_fallback:
+                            print(f"[BeautifulSoup fallback error] Could not extract time: {e_fallback}")
 
 
                     home_team_span = cells[3].find('span')
@@ -153,14 +159,66 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
     all_match_data_for_leaderboard = [] if fetch_all_rounds_data else None
     available_rounds = []
     current_round_info = {'name': "N/A", 'url': url_to_scrape, 'id': None}
+    
+    # Izboljšani headerji za simulacijo resnišnega brskalnika
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+        'DNT': '1'
     }
     session = requests.Session()
+    session.headers.update(headers)
     try:
-        response = session.get(url_to_scrape, headers=headers, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
+        # Dodamo retry mehanizem z različnimi headerji
+        for attempt in range(3):
+            try:
+                if attempt == 1:
+                    # Drugi poskus z drugačnim User-Agent
+                    session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0'
+                    })
+                elif attempt == 2:
+                    # Tretji poskus z osnovnim User-Agent
+                    session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)'
+                    })
+                
+                # Dodamo kratko zakavo za izogibanje rate limitom
+                if attempt > 0:
+                    time.sleep(random.uniform(1, 3))
+                
+                response = session.get(url_to_scrape, timeout=15, allow_redirects=True)
+                
+                # Preverimo če smo dobili pravilno stran
+                if response.status_code == 200:
+                    content_type = response.headers.get('content-type', '').lower()
+                    if 'text/html' in content_type:
+                        soup = BeautifulSoup(response.content, 'html.parser')
+                        break
+                    else:
+                        print(f"Unexpected content type: {content_type}")
+                        if attempt == 2:
+                            raise Exception(f"Invalid content type: {content_type}")
+                        continue
+                else:
+                    response.raise_for_status()
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"Request attempt {attempt + 1} failed: {e}")
+                if attempt == 2:
+                    raise
+                continue
+        else:
+            raise Exception("All retry attempts failed")
         available_rounds, current_round_info_from_page = extract_round_options_and_current(soup, url_to_scrape)
         if current_round_info_from_page['name'] != "N/A":
             current_round_info = current_round_info_from_page
@@ -169,16 +227,34 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
         if fetch_all_rounds_data and available_rounds:
             all_match_data_for_leaderboard = []
             unique_match_identifiers = set()
-            max_workers = int(os.environ.get("SCRAPER_MAX_WORKERS", 6))
+            # Zmanjšajmo število vzporednih zahtev za izogibanje rate limitom
+            max_workers = int(os.environ.get("SCRAPER_MAX_WORKERS", 3))
 
             def fetch_round(round_opt):
                 try:
                     if round_opt['url'] == url_to_scrape:
                         return page_matches
-                    r = session.get(round_opt['url'], headers=headers, timeout=8)
-                    r.raise_for_status()
-                    s = BeautifulSoup(r.content, 'html.parser')
-                    return _parse_matches_from_soup(s, round_opt['name'], round_opt['url'])
+                    
+                    # Uporabimo isto retry logiko
+                    for attempt in range(2):
+                        try:
+                            # Kratka zakava med zahtevki
+                            if attempt > 0:
+                                time.sleep(random.uniform(0.5, 2))
+                            
+                            r = session.get(round_opt['url'], timeout=10, allow_redirects=True)
+                            if r.status_code == 200:
+                                content_type = r.headers.get('content-type', '').lower()
+                                if 'text/html' in content_type:
+                                    s = BeautifulSoup(r.content, 'html.parser')
+                                    return _parse_matches_from_soup(s, round_opt['name'], round_opt['url'])
+                            r.raise_for_status()
+                        except requests.exceptions.RequestException as e:
+                            print(f"Attempt {attempt + 1} failed for {round_opt['name']}: {e}")
+                            if attempt == 1:
+                                raise
+                            continue
+                    return []
                 except Exception as e:
                     print(f"Error fetching {round_opt['name']}: {e}")
                     return []
@@ -252,3 +328,5 @@ if __name__ == '__main__':
     # _, all_matches_data_b, _, _ = fetch_lmn_radgona_data(liga_b_main_results_url, fetch_all_rounds_data=True)
     # if all_matches_data_b:
     #     print(f"\nTotal unique matches scraped for Liga B leaderboard: {len(all_matches_data_b)}")
+    # else:
+    #     print("No matches collected for Liga B")
