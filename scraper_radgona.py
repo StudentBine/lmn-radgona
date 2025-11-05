@@ -177,13 +177,21 @@ def _parse_matches_from_soup(soup_obj, round_name_for_match="N/A", round_url_sou
     return matches_found
 
 def get_rotating_user_agents():
-    """Return rotating user agents for different browsers"""
+    """Return rotating user agents for different browsers including mobile"""
     return [
+        # Desktop browsers
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        # Mobile browsers (often less scrutinized)
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Mozilla/5.0 (Android 13; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0',
+        'Mozilla/5.0 (Linux; Android 13; SM-S901B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        # Older browsers
+        'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:109.0) Gecko/20100101 Firefox/115.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
     ]
 
 def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id_for_caching=None):
@@ -203,10 +211,34 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
     selected_ua = random.choice(user_agents)
     
     if debug_mode:
-        print(f"[DEBUG] Using User-Agent: {selected_ua.split('/')[-1].split()[0]}")
+        print(f"[DEBUG] Using User-Agent: {selected_ua.split('/')[-1].split()[0] if '/' in selected_ua else selected_ua[:50]}")
     
-    # Build headers based on browser type
-    if 'Firefox' in selected_ua:
+    # Determine if this is a mobile user agent
+    is_mobile = 'Mobile' in selected_ua or 'iPhone' in selected_ua or 'Android' in selected_ua
+    
+    # Build headers based on browser type and mobile detection
+    if 'iPhone' in selected_ua:
+        headers = {
+            'User-Agent': selected_ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+    elif 'Android' in selected_ua:
+        headers = {
+            'User-Agent': selected_ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none'
+        }
+    elif 'Firefox' in selected_ua:
         headers = {
             'User-Agent': selected_ua,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -221,6 +253,9 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
             'Sec-Fetch-User': '?1'
         }
     else:  # Chrome-based
+        mobile_header = '?1' if is_mobile else '?0'
+        platform_header = '"Android"' if 'Android' in selected_ua else '"Linux"'
+        
         headers = {
             'User-Agent': selected_ua,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -230,8 +265,8 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
             'Pragma': 'no-cache',
             'DNT': '1',
             'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"Linux"',
+            'sec-ch-ua-mobile': mobile_header,
+            'sec-ch-ua-platform': platform_header,
             'Sec-Fetch-Dest': 'document',
             'Sec-Fetch-Mode': 'navigate',
             'Sec-Fetch-Site': 'none',
@@ -272,43 +307,83 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
             'Sec-Fetch-Site': 'same-origin'
         })
         
-        # Dodamo retry mehanizem z različnimi headerji
-        for attempt in range(3):
+        # Enhanced retry mechanism with multiple strategies
+        for attempt in range(5):  # Increased retry attempts
             try:
                 if attempt == 1:
-                    # Drugi poskus z drugačnim User-Agent
+                    # Second attempt: Switch to mobile user agent
+                    mobile_ua = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
                     session.headers.update({
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0'
+                        'User-Agent': mobile_ua,
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8',
                     })
+                    # Remove problematic headers for mobile
+                    for header in ['sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'Cache-Control', 'Pragma']:
+                        session.headers.pop(header, None)
                 elif attempt == 2:
-                    # Tretji poskus z osnovnim User-Agent
+                    # Third attempt: Older Firefox
                     session.headers.update({
-                        'User-Agent': 'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)'
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                     })
+                elif attempt == 3:
+                    # Fourth attempt: Very basic headers
+                    session.headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Connection': 'keep-alive',
+                        'Upgrade-Insecure-Requests': '1'
+                    }
+                elif attempt == 4:
+                    # Fifth attempt: Minimal headers like a bot that might be whitelisted
+                    session.headers = {
+                        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                        'Accept': '*/*',
+                        'Accept-Language': 'en',
+                    }
                 
-                # Dodamo zakavo za izogibanje rate limitom (daljšo za production)
+                # Progressive delay: longer waits for later attempts
                 if attempt > 0:
-                    delay = random.uniform(3, 8)
+                    # Exponential backoff with jitter
+                    base_delay = 2 ** (attempt - 1)  # 1, 2, 4, 8 seconds base
+                    jitter = random.uniform(0.5, 2.0)
+                    delay = min(base_delay * jitter, 20)  # Cap at 20 seconds
                     if debug_mode:
-                        print(f"[DEBUG] Retry delay: {delay:.1f}s")
+                        print(f"[DEBUG] Retry attempt {attempt} delay: {delay:.1f}s")
                     time.sleep(delay)
                 
-                response = session.get(url_to_scrape, timeout=30, allow_redirects=True)
+                # Make the request with different timeout strategies
+                timeout_val = 20 + (attempt * 5)  # Increase timeout for later attempts
+                response = session.get(url_to_scrape, timeout=timeout_val, allow_redirects=True)
                 
-                # Check for Cloudflare challenge
-                if "One moment, please" in response.text:
+                # Enhanced Cloudflare detection
+                cloudflare_indicators = [
+                    "One moment, please",
+                    "Please wait while your request is being verified",
+                    "DDoS protection by Cloudflare",
+                    "cf-browser-verification",
+                    "Checking your browser",
+                    "__cf_bm"
+                ]
+                
+                is_cloudflare_challenge = any(indicator in response.text for indicator in cloudflare_indicators)
+                
+                if is_cloudflare_challenge:
                     if debug_mode:
                         print(f"[DEBUG] Cloudflare challenge detected on attempt {attempt + 1}")
-                    if attempt == 2:
+                    if attempt == 4:  # Last attempt
                         raise Exception("Cloudflare bot detection preventing access")
                     continue
                 
-                # Preverimo če smo dobili pravilno stran
+                # Check for successful response
                 if response.status_code == 200:
                     content_type = response.headers.get('content-type', '').lower()
                     if debug_mode:
-                        print(f"[DEBUG] Response status: {response.status_code}, content-type: {content_type}, length: {len(response.content)}")
-                    if 'text/html' in content_type:
+                        print(f"[DEBUG] Attempt {attempt + 1} - Response status: {response.status_code}, content-type: {content_type}, length: {len(response.content)}")
+                    
+                    if 'text/html' in content_type and len(response.content) > 1000:  # Ensure it's substantial content
                         soup = BeautifulSoup(response.content, 'html.parser')
                         if debug_mode:
                             print(f"[DEBUG] Successfully parsed HTML, title: {soup.title.string if soup.title else 'No title'}")
@@ -322,21 +397,30 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                                 print(f"[DEBUG] No tables found! First 500 chars: {body_text}")
                         break
                     else:
-                        print(f"[ERROR] Unexpected content type: {content_type}")
-                        if attempt == 2:
-                            raise Exception(f"Invalid content type: {content_type}")
+                        if debug_mode:
+                            print(f"[DEBUG] Invalid content: type={content_type}, length={len(response.content)}")
+                        if attempt == 4:
+                            raise Exception(f"Invalid content: {content_type}, length: {len(response.content)}")
                         continue
+                elif response.status_code in [403, 503]:  # Typical bot blocking codes
+                    if debug_mode:
+                        print(f"[DEBUG] Bot blocking detected: HTTP {response.status_code}")
+                    if attempt == 4:
+                        raise Exception(f"Access denied: HTTP {response.status_code}")
+                    continue
                 else:
-                    print(f"[ERROR] HTTP {response.status_code}: {response.reason}")
+                    if debug_mode:
+                        print(f"[DEBUG] HTTP {response.status_code}: {response.reason}")
                     response.raise_for_status()
                     
             except requests.exceptions.RequestException as e:
-                print(f"Request attempt {attempt + 1} failed: {e}")
-                if attempt == 2:
-                    raise
+                if debug_mode:
+                    print(f"[DEBUG] Request attempt {attempt + 1} failed: {e}")
+                if attempt == 4:
+                    raise Exception(f"All retry attempts failed. Last error: {e}")
                 continue
         else:
-            raise Exception("All retry attempts failed")
+            raise Exception("All retry attempts exhausted")
         available_rounds, current_round_info_from_page = extract_round_options_and_current(soup, url_to_scrape)
         if debug_mode:
             print(f"[DEBUG] Found {len(available_rounds)} rounds")

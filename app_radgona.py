@@ -288,24 +288,36 @@ def show_league_results(league_id):
         round_details = next((r for r in available_rounds or [] if r['url'] == target_round_url), None)
 
         if page_matches is None:
-            try:
-                scraped_matches, _, _, scraped_round_info = fetch_lmn_radgona_data(
-                    target_round_url, fetch_all_rounds_data=False, league_id_for_caching=league_id)
-                if scraped_matches:
-                    database.cache_matches(league_id, target_round_url, scraped_matches)
-                    page_matches = scraped_matches
-                    round_details = scraped_round_info
-                    logger.info(f"Successfully scraped {len(scraped_matches)} matches for round")
-                else:
-                    logger.warning(f"No matches scraped for round {target_round_url}")
+            # Check if scraping is disabled in production
+            scraping_enabled = os.environ.get('ENABLE_SCRAPING', 'true').lower() == 'true'
+            
+            if scraping_enabled:
+                try:
+                    scraped_matches, _, _, scraped_round_info = fetch_lmn_radgona_data(
+                        target_round_url, fetch_all_rounds_data=False, league_id_for_caching=league_id)
+                    if scraped_matches:
+                        database.cache_matches(league_id, target_round_url, scraped_matches)
+                        page_matches = scraped_matches
+                        round_details = scraped_round_info
+                        logger.info(f"Successfully scraped {len(scraped_matches)} matches for round")
+                    else:
+                        logger.warning(f"No matches scraped for round {target_round_url}")
+                        page_matches = []
+                        if not round_details:
+                            round_details = {'name': 'Ni podatkov', 'url': target_round_url}
+                except Exception as scrape_error:
+                    if "Cloudflare" in str(scrape_error):
+                        logger.warning(f"Cloudflare blocking detected for round {target_round_url}, using cached data only")
+                    else:
+                        logger.error(f"Failed to scrape matches for {target_round_url}: {scrape_error}")
                     page_matches = []
                     if not round_details:
-                        round_details = {'name': 'Ni podatkov', 'url': target_round_url}
-            except Exception as scrape_error:
-                logger.error(f"Failed to scrape matches for {target_round_url}: {scrape_error}")
+                        round_details = {'name': 'Napaka pri nalaganju (Cloudflare)', 'url': target_round_url}
+            else:
+                logger.info(f"Scraping disabled, using cached data only for {target_round_url}")
                 page_matches = []
                 if not round_details:
-                    round_details = {'name': 'Napaka pri nalaganju', 'url': target_round_url}
+                    round_details = {'name': 'Predpomnjeni podatki', 'url': target_round_url}
         elif not round_details:
             round_details = {'name': 'Krog (iz predpomn.)', 'url': target_round_url}
 
@@ -361,33 +373,60 @@ def show_leaderboard(league_id):
                     scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
                     if scraped:
                         database.cache_matches(league_id, current_round_info['url'], scraped)
-            # Parallel scrape all rounds for leaderboard
+            # Enhanced scraping with Cloudflare handling
             try:
-                # Try simpler approach first - just get current round
-                page_matches_test, _, rounds_test, current_round_test = fetch_lmn_radgona_data(
-                    LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
+                # Check if we should skip scraping due to recent Cloudflare blocks
+                should_skip_scraping = False
                 
-                if page_matches_test and rounds_test:
-                    logger.info(f"Successfully scraped {len(page_matches_test)} matches and {len(rounds_test)} rounds for {league_id}")
-                    # Now try to get all matches
-                    _, all_matches, _, _ = fetch_lmn_radgona_data(
-                        LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True, league_id_for_caching=league_id)
-                    if all_matches:
-                        logger.info(f"Successfully scraped {len(all_matches)} total matches for {league_id}")
+                # Try simpler approach first - just get current round
+                try:
+                    page_matches_test, _, rounds_test, current_round_test = fetch_lmn_radgona_data(
+                        LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
+                    
+                    if page_matches_test and rounds_test:
+                        logger.info(f"Successfully scraped {len(page_matches_test)} matches and {len(rounds_test)} rounds for {league_id}")
+                        # Now try to get all matches
+                        try:
+                            _, all_matches, _, _ = fetch_lmn_radgona_data(
+                                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True, league_id_for_caching=league_id)
+                            if all_matches:
+                                logger.info(f"Successfully scraped {len(all_matches)} total matches for {league_id}")
+                            else:
+                                logger.warning(f"Failed to scrape all matches for {league_id}, using cached data")
+                                all_matches = database.get_all_matches_for_league(league_id)
+                        except Exception as e:
+                            if "Cloudflare" in str(e):
+                                logger.warning(f"Cloudflare blocking detected for all matches, using cached data for {league_id}")
+                                should_skip_scraping = True
+                            else:
+                                logger.error(f"Error scraping all matches for {league_id}: {e}")
+                            all_matches = database.get_all_matches_for_league(league_id)
                     else:
-                        logger.warning(f"Failed to scrape all matches for {league_id}, using cached data")
+                        logger.warning(f"Failed to scrape basic data for {league_id}, using cached data")
                         all_matches = database.get_all_matches_for_league(league_id)
-                else:
-                    logger.warning(f"Failed to scrape basic data for {league_id}, using cached data")
+                        should_skip_scraping = True
+                        
+                except Exception as e:
+                    if "Cloudflare" in str(e):
+                        logger.warning(f"Cloudflare blocking detected for {league_id}, falling back to cached data")
+                        should_skip_scraping = True
+                    else:
+                        logger.error(f"Basic scraping failed for {league_id}: {e}")
                     all_matches = database.get_all_matches_for_league(league_id)
+                    
             except Exception as scrape_error:
-                logger.error(f"Scraping failed for {league_id}: {scrape_error}")
+                logger.error(f"Scraping completely failed for {league_id}: {scrape_error}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
-                # Uporabi cached podatke kot fallback
+                # Use cached data as fallback
                 all_matches = database.get_all_matches_for_league(league_id)
+                should_skip_scraping = True
                 if not all_matches:
                     logger.warning(f"No cached data available for {league_id}")
+                    
+            # If we're being blocked, add some delay before next request
+            if should_skip_scraping:
+                logger.info(f"Skipping aggressive scraping for {league_id} due to blocking detection")
             
             leaderboard_data = calculate_leaderboard(all_matches, league_id)
             if leaderboard_data:
@@ -547,11 +586,29 @@ def env_check():
             'has_database_url': bool(os.environ.get('DATABASE_URL')),
             'has_secret_key': bool(os.environ.get('SECRET_KEY')),
             'scraper_debug': os.environ.get('SCRAPER_DEBUG', 'false'),
-            'scraper_max_workers': os.environ.get('SCRAPER_MAX_WORKERS', '6'),
+            'scraper_max_workers': os.environ.get('SCRAPER_MAX_WORKERS', '3'),
+            'enable_scraping': os.environ.get('ENABLE_SCRAPING', 'true'),
             'flask_env': os.environ.get('FLASK_ENV', 'development'),
-            'port': os.environ.get('PORT', '5000')
+            'port': os.environ.get('PORT', '5000'),
+            'redis_configured': bool(os.environ.get('REDIS_URL'))
         }
         return f"<pre>{json.dumps(env_info, indent=2)}</pre>"
+    except Exception as e:
+        return f"<pre>Error: {str(e)}</pre>", 500
+
+@app.route('/admin/toggle-scraping')
+def toggle_scraping():
+    """Toggle scraping on/off (temporary for this session)"""
+    try:
+        current_status = os.environ.get('ENABLE_SCRAPING', 'true').lower() == 'true'
+        new_status = 'false' if current_status else 'true'
+        
+        # This only affects the current process, not persistent
+        os.environ['ENABLE_SCRAPING'] = new_status
+        
+        status_text = 'enabled' if new_status == 'true' else 'disabled'
+        return f"<h2>Scraping {status_text}</h2><p>Current session only - will reset on restart</p><p><a href='/admin/env-check'>Check Environment</a></p>"
+        
     except Exception as e:
         return f"<pre>Error: {str(e)}</pre>", 500
 
