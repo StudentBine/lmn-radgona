@@ -176,6 +176,16 @@ def _parse_matches_from_soup(soup_obj, round_name_for_match="N/A", round_url_sou
                     print(f"Error parsing match row: {e_parse}")
     return matches_found
 
+def get_rotating_user_agents():
+    """Return rotating user agents for different browsers"""
+    return [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    ]
+
 def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id_for_caching=None):
     debug_mode = os.environ.get('SCRAPER_DEBUG', 'false').lower() == 'true'
     
@@ -188,29 +198,54 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
     available_rounds = []
     current_round_info = {'name': "N/A", 'url': url_to_scrape, 'id': None}
     
-    # Advanced headers to bypass Cloudflare bot detection
-    # Include security headers that real browsers send
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0'
-    }
+    # Rotate through different user agents to avoid detection
+    user_agents = get_rotating_user_agents()
+    selected_ua = random.choice(user_agents)
+    
+    if debug_mode:
+        print(f"[DEBUG] Using User-Agent: {selected_ua.split('/')[-1].split()[0]}")
+    
+    # Build headers based on browser type
+    if 'Firefox' in selected_ua:
+        headers = {
+            'User-Agent': selected_ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.8,en-US;q=0.5,en;q=0.3',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1'
+        }
+    else:  # Chrome-based
+        headers = {
+            'User-Agent': selected_ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'DNT': '1',
+            'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Linux"',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1'
+        }
+    
     session = requests.Session()
     session.headers.update(headers)
     
     try:
         # First establish session by visiting homepage (helps bypass bot detection)
         try:
-            homepage_response = session.get(BASE_URL, timeout=20)
+            homepage_response = session.get(BASE_URL, timeout=30)
             if debug_mode:
                 print(f"[DEBUG] Homepage visit status: {homepage_response.status_code}")
             
@@ -220,8 +255,11 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                     print(f"[DEBUG] Cloudflare challenge detected on homepage")
                 raise Exception("Cloudflare bot detection active")
                 
-            # Wait like a human would before navigating
-            time.sleep(random.uniform(1, 2))
+            # Wait like a human would before navigating (longer for production)
+            delay = random.uniform(2, 5)
+            if debug_mode:
+                print(f"[DEBUG] Human-like delay: {delay:.1f}s")
+            time.sleep(delay)
             
         except Exception as e:
             if debug_mode:
@@ -248,11 +286,14 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                         'User-Agent': 'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; WOW64; Trident/6.0)'
                     })
                 
-                # Dodamo kratko zakavo za izogibanje rate limitom
+                # Dodamo zakavo za izogibanje rate limitom (daljšo za production)
                 if attempt > 0:
-                    time.sleep(random.uniform(1, 3))
+                    delay = random.uniform(3, 8)
+                    if debug_mode:
+                        print(f"[DEBUG] Retry delay: {delay:.1f}s")
+                    time.sleep(delay)
                 
-                response = session.get(url_to_scrape, timeout=20, allow_redirects=True)
+                response = session.get(url_to_scrape, timeout=30, allow_redirects=True)
                 
                 # Check for Cloudflare challenge
                 if "One moment, please" in response.text:
