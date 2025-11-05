@@ -202,7 +202,20 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
     }
     session = requests.Session()
     session.headers.update(headers)
+    
     try:
+        # First establish session by visiting homepage (helps with some websites)
+        try:
+            homepage_response = session.get(BASE_URL, timeout=10)
+            if debug_mode:
+                print(f"[DEBUG] Homepage visit status: {homepage_response.status_code}")
+        except Exception as e:
+            if debug_mode:
+                print(f"[DEBUG] Homepage visit failed: {e}")
+        
+        # Add referer header for the actual request
+        session.headers.update({'Referer': BASE_URL})
+        
         # Dodamo retry mehanizem z različnimi headerji
         for attempt in range(3):
             try:
@@ -232,6 +245,14 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                         soup = BeautifulSoup(response.content, 'html.parser')
                         if debug_mode:
                             print(f"[DEBUG] Successfully parsed HTML, title: {soup.title.string if soup.title else 'No title'}")
+                            # Check for tables immediately to debug the issue
+                            fixtures_table = soup.find('table', class_='fixtures-results')
+                            all_tables = soup.find_all('table')
+                            print(f"[DEBUG] Tables found: {len(all_tables)} total, fixtures-results: {fixtures_table is not None}")
+                            if len(all_tables) == 0:
+                                # If no tables, show some content for debugging
+                                body_text = soup.get_text()[:500]
+                                print(f"[DEBUG] No tables found! First 500 chars: {body_text}")
                         break
                     else:
                         print(f"[ERROR] Unexpected content type: {content_type}")
