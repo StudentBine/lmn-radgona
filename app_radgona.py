@@ -12,6 +12,7 @@ import os
 import hashlib
 import json
 import logging
+import time
 
 # Configure logging - use simpler approach that works everywhere
 try:
@@ -553,6 +554,53 @@ def env_check():
         return f"<pre>{json.dumps(env_info, indent=2)}</pre>"
     except Exception as e:
         return f"<pre>Error: {str(e)}</pre>", 500
+
+@app.route('/admin/force-debug-test')
+def force_debug_test():
+    """Force debug mode and test the scraper"""
+    try:
+        # Temporarily enable debug mode
+        original_debug = os.environ.get('SCRAPER_DEBUG', 'false')
+        os.environ['SCRAPER_DEBUG'] = 'true'
+        
+        # Test Liga A URL
+        url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+        
+        logger.info(f"Starting forced debug test for: {url}")
+        start_time = time.time()
+        
+        from scraper_radgona import fetch_lmn_radgona_data
+        
+        page_matches, all_matches, rounds, current_round = fetch_lmn_radgona_data(url)
+        
+        duration = time.time() - start_time
+        
+        # Restore original debug setting
+        os.environ['SCRAPER_DEBUG'] = original_debug
+        
+        result = {
+            'test_type': 'forced_debug_test',
+            'timestamp': datetime.now().isoformat(),
+            'url': url,
+            'debug_enabled': True,
+            'duration_seconds': duration,
+            'page_matches_count': len(page_matches) if page_matches else 0,
+            'rounds_count': len(rounds) if rounds else 0,
+            'current_round': current_round,
+            'sample_matches': (page_matches or [])[:2]
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        # Restore debug setting in case of error
+        if 'original_debug' in locals():
+            os.environ['SCRAPER_DEBUG'] = original_debug
+            
+        logger.error(f"Force debug test error: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error in force debug test: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
 
 @app.route('/admin/test-url/<league_id>')
 def test_url_direct(league_id):
