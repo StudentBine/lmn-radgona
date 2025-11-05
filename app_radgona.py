@@ -555,6 +555,65 @@ def env_check():
     except Exception as e:
         return f"<pre>Error: {str(e)}</pre>", 500
 
+@app.route('/admin/mobile-fallback-test')
+def mobile_fallback_test():
+    """Test mobile user agent as fallback for bot detection"""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+        
+        # Mobile user agent (often less scrutinized by bot detection)
+        mobile_headers = {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        
+        logger.info(f"Testing mobile fallback for: {url}")
+        start_time = time.time()
+        
+        session = requests.Session()
+        session.headers.update(mobile_headers)
+        
+        response = session.get(url, timeout=25)
+        duration = time.time() - start_time
+        
+        # Check for challenge
+        challenge_detected = "One moment, please" in response.text
+        
+        # Parse content
+        soup = BeautifulSoup(response.text, 'html.parser')
+        title = soup.find('title')
+        fixtures_table = soup.find('table', class_='fixtures-results')
+        all_tables = soup.find_all('table')
+        
+        result = {
+            'test_type': 'mobile_fallback_test',
+            'timestamp': datetime.now().isoformat(),
+            'url': url,
+            'status_code': response.status_code,
+            'content_length': len(response.text),
+            'duration_seconds': duration,
+            'challenge_detected': challenge_detected,
+            'title': title.get_text(strip=True) if title else 'No title',
+            'fixtures_table_found': fixtures_table is not None,
+            'total_tables': len(all_tables),
+            'user_agent': 'Mobile Safari (iPhone)'
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        logger.error(f"Mobile fallback test error: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error in mobile fallback test: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
 @app.route('/admin/force-debug-test')
 def force_debug_test():
     """Force debug mode and test the scraper"""
