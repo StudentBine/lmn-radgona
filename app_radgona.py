@@ -304,6 +304,15 @@ def show_league_results(league_id):
         # Try to get cached matches for this specific round
         page_matches = database.get_cached_round_matches(league_id, target_round_url)
 
+        # If cache is stale/expired, fallback to filtering all matches by round name
+        if page_matches is None and round_details and round_details.get('name'):
+            logger.info(f"Cache stale for {target_round_url}, filtering all matches by round name")
+            all_league_matches = database.get_all_matches_for_league(league_id)
+            if all_league_matches:
+                round_name = round_details['name']
+                page_matches = [m for m in all_league_matches if m.get('round_name') == round_name]
+                logger.info(f"Found {len(page_matches)} matches for round '{round_name}' using fallback")
+            
         if page_matches is None:
             # Check if scraping is disabled in production (default to disabled for safety)
             scraping_enabled = os.environ.get('ENABLE_SCRAPING', 'false').lower() == 'true'
@@ -492,9 +501,9 @@ def show_leaderboard(league_id):
             logger.warning(f"No cached data available for {league_id}")
             all_matches = []
             
-            leaderboard_data = calculate_leaderboard(all_matches, league_id)
-            if leaderboard_data:
-                database.cache_leaderboard(league_id, leaderboard_data)
+        leaderboard_data = calculate_leaderboard(all_matches, league_id)
+        if leaderboard_data:
+            database.cache_leaderboard(league_id, leaderboard_data)
 
         return render_template('leaderboard.html',
                                leaderboard_data=leaderboard_data,
@@ -647,6 +656,67 @@ def admin_status():
         <p><a href="/league/liga_b/results">Liga B Results</a></p>
         <p><a href="/league/liga_a/leaderboard">Liga A Leaderboard</a></p>
         <p><a href="/league/liga_b/leaderboard">Liga B Leaderboard</a></p>
+        """
+        
+        return html
+        
+    except Exception as e:
+        return f"<pre>Error: {str(e)}</pre>", 500
+
+@app.route('/admin/winter-break-status')
+def winter_break_status():
+    """Check winter break status and match filtering"""
+    try:
+        from datetime import date
+        today = date.today()
+        winter_break_start = date(2025, 11, 10)
+        season_restart = date(2026, 3, 1)
+        
+        is_winter_break = today >= winter_break_start and today < season_restart
+        
+        status = {
+            'current_date': today.isoformat(),
+            'winter_break_start': winter_break_start.isoformat(),
+            'season_restart': season_restart.isoformat(),
+            'is_winter_break_period': is_winter_break,
+            'days_until_break': (winter_break_start - today).days if today < winter_break_start else 0,
+            'days_until_restart': (season_restart - today).days if today < season_restart else 0
+        }
+        
+        # Check how many matches would be filtered for each league
+        for league_id in ['liga_a', 'liga_b']:
+            matches = database.get_all_matches_for_league(league_id) or []
+            total_matches = len(matches)
+            filtered_matches = 0
+            
+            for match in matches:
+                round_name = match.get('round_name', '')
+                match_date = match.get('date_obj')
+                
+                round_num = None
+                if 'krog' in round_name:
+                    try:
+                        round_num = int(round_name.split('.')[0])
+                    except:
+                        pass
+                
+                if is_winter_break:
+                    if round_num and round_num > 13:
+                        filtered_matches += 1
+                    elif match_date and match_date > today and match.get('score_str') == 'N/P':
+                        filtered_matches += 1
+            
+            status[f'{league_id}_total_matches'] = total_matches
+            status[f'{league_id}_filtered_matches'] = filtered_matches
+            status[f'{league_id}_shown_matches'] = total_matches - filtered_matches
+        
+        html = f"""
+        <h2>Winter Break Status</h2>
+        <pre>{json.dumps(status, indent=2, default=str)}</pre>
+        <h3>Actions</h3>
+        <p><a href="/admin/status">Back to Admin Status</a></p>
+        <p><a href="/league/liga_a/results">Liga A Results</a></p>
+        <p><a href="/league/liga_b/results">Liga B Results</a></p>
         """
         
         return html

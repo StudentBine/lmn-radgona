@@ -10,9 +10,9 @@ from contextlib import contextmanager
 load_dotenv()
 
 # --- Constants ---
-CACHE_DURATION_ROUNDS = timedelta(hours=24)
-CACHE_DURATION_MATCHES = timedelta(hours=1)
-CACHE_DURATION_LEADERBOARD = timedelta(hours=1)
+CACHE_DURATION_ROUNDS = timedelta(days=7)   # Rounds rarely change - cache for a week
+CACHE_DURATION_MATCHES = timedelta(hours=24)  # Extended to 24 hours for better round navigation  
+CACHE_DURATION_LEADERBOARD = timedelta(hours=6)  # Cache leaderboard for 6 hours for speed
 
 # --- Database connection pool ---
 _db_pool = None
