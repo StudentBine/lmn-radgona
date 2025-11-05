@@ -388,9 +388,54 @@ def show_league_results(league_id):
                 else:
                     round_details['name'] = f"Zadnje tekme ({round_details.get('name', 'neznano')})"
 
-        grouped_data = defaultdict(list)
+        # Filter matches based on winter break logic
+        from datetime import date
+        today = date.today()
+        winter_break_start = date(2025, 11, 10)  # Winter break starts after round 13 
+        season_restart = date(2026, 3, 1)        # Season restarts in March
+        
+        filtered_matches = []
         for match in page_matches:
+            match_date = match.get('date_obj')
+            round_name = match.get('round_name', '')
+            
+            # Winter break logic: Hide future rounds after round 13 during break period
+            is_winter_break_period = today >= winter_break_start and today < season_restart
+            
+            if is_winter_break_period:
+                # Extract round number
+                round_num = None
+                if 'krog' in round_name:
+                    try:
+                        round_num = int(round_name.split('.')[0])
+                    except:
+                        round_num = None
+                
+                # Skip rounds after 13 during winter break (rounds 14+)
+                if round_num and round_num > 13:
+                    continue
+                    
+                # Also skip unplayed matches in current period if date is in future
+                if match_date and match_date > today and match.get('score_str') == 'N/P':
+                    continue
+            
+            filtered_matches.append(match)
+        
+        grouped_data = defaultdict(list)
+        for match in filtered_matches:
             grouped_data[match['date_str']].append(match)
+            
+        # If no matches after filtering, show a message about winter break
+        if not filtered_matches and page_matches:
+            logger.info(f"All matches filtered due to winter break period for {league_id}")
+            # Create a placeholder to show winter break message
+            grouped_data['Winter Break'] = [{
+                'home_team': 'Winter Break',
+                'away_team': 'Season Break',
+                'score_str': 'PAUSE',
+                'time': '',
+                'venue': 'League suspended until March 2026'
+            }]
 
         return render_template('results_radgona.html',
                                grouped_results=dict(grouped_data),
@@ -440,72 +485,12 @@ def show_leaderboard(league_id):
                     scraped, _, _, _ = fetch_lmn_radgona_data(current_round_info['url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
                     if scraped:
                         database.cache_matches(league_id, current_round_info['url'], scraped)
-            # Enhanced scraping with timeout protection
-            try:
-                # Disable scraping entirely for leaderboard in production to avoid timeouts
-                scraping_enabled = os.environ.get('ENABLE_SCRAPING', 'false').lower() == 'true'
-                is_production = os.environ.get('FLASK_ENV', 'development') == 'production'
-                
-                if not scraping_enabled or is_production:
-                    logger.info(f"Using cached data only for {league_id} leaderboard (production mode or scraping disabled)")
-                    all_matches = database.get_all_matches_for_league(league_id)
-                else:
-                    # Only try scraping in development or when explicitly forced
-                    should_skip_scraping = False
-                    
-                    # Add timeout protection for leaderboard scraping
-                    import signal
-                    
-                    def leaderboard_timeout_handler(signum, frame):
-                        raise TimeoutError("Leaderboard scraping timeout")
-                    
-                    # Set a 15 second timeout for leaderboard scraping
-                    signal.signal(signal.SIGALRM, leaderboard_timeout_handler)
-                    signal.alarm(15)
-                    
-                    try:
-                        # Try simpler approach first - just get current round
-                        try:
-                            page_matches_test, _, rounds_test, current_round_test = fetch_lmn_radgona_data(
-                                LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
-                            
-                            if page_matches_test and rounds_test:
-                                logger.info(f"Successfully scraped {len(page_matches_test)} matches and {len(rounds_test)} rounds for {league_id}")
-                                # Skip full scraping for now to avoid timeouts
-                                all_matches = database.get_all_matches_for_league(league_id)
-                                if not all_matches:
-                                    all_matches = page_matches_test  # Use at least current round data
-                            else:
-                                logger.warning(f"Failed to scrape basic data for {league_id}, using cached data")
-                                all_matches = database.get_all_matches_for_league(league_id)
-                                should_skip_scraping = True
-                                
-                        except Exception as e:
-                            if "415" in str(e) or "Cloudflare" in str(e):
-                                logger.warning(f"Server blocking detected for {league_id}, falling back to cached data")
-                                should_skip_scraping = True
-                            else:
-                                logger.error(f"Basic scraping failed for {league_id}: {e}")
-                            all_matches = database.get_all_matches_for_league(league_id)
-                        
-                        signal.alarm(0)  # Cancel timeout
-                        
-                    except TimeoutError:
-                        signal.alarm(0)  # Cancel timeout
-                        logger.warning(f"Leaderboard scraping timeout for {league_id}, using cached data")
-                        all_matches = database.get_all_matches_for_league(league_id)
-                        should_skip_scraping = True
-                        
-            except Exception as scrape_error:
-                try:
-                    signal.alarm(0)  # Cancel timeout if still active
-                except:
-                    pass
-                logger.error(f"Scraping completely failed for {league_id}: {scrape_error}")
-                # Use cached data as fallback
-                all_matches = database.get_all_matches_for_league(league_id)
-                if not all_matches:
-                    logger.warning(f"No cached data available for {league_id}")
+            # Fast leaderboard loading - use cached data only
+        logger.info(f"Loading leaderboard for {league_id} from cached data")
+        all_matches = database.get_all_matches_for_league(league_id)
+        if not all_matches:
+            logger.warning(f"No cached data available for {league_id}")
+            all_matches = []
             
             leaderboard_data = calculate_leaderboard(all_matches, league_id)
             if leaderboard_data:
