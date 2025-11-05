@@ -79,20 +79,42 @@ def parse_score(score_str):
     return None, None
 
 def _parse_matches_from_soup(soup_obj, round_name_for_match="N/A", round_url_source="N/A"):
+    debug_mode = os.environ.get('SCRAPER_DEBUG', 'false').lower() == 'true'
+    
     matches_found = []
     fixtures_table = soup_obj.find('table', class_='fixtures-results')
     if not fixtures_table:
+        print(f"[ERROR] No fixtures-results table found")
+        if debug_mode:
+            # Let's see what tables are available
+            all_tables = soup_obj.find_all('table')
+            print(f"[DEBUG] Found {len(all_tables)} tables total")
+            for i, table in enumerate(all_tables[:5]):  # Show first 5 tables
+                classes = table.get('class', [])
+                print(f"[DEBUG] Table {i}: classes={classes}")
         return matches_found
+    
+    if debug_mode:
+        print(f"[DEBUG] Found fixtures-results table")
 
     current_date_str_from_header = "N/A"
-    for row in fixtures_table.find_all('tr', recursive=False):
-        if 'sectiontableheader' in row.get('class', []):
+    rows_found = fixtures_table.find_all('tr', recursive=False)
+    if debug_mode:
+        print(f"[DEBUG] Found {len(rows_found)} rows in fixtures table")
+    
+    for row_idx, row in enumerate(rows_found):
+        row_classes = row.get('class', [])
+        if 'sectiontableheader' in row_classes:
             date_th = row.find('th')
             current_date_str_from_header = date_th.get_text(strip=True) if date_th and date_th.get_text(strip=True) else "Datum ni določen"
+            if debug_mode:
+                print(f"[DEBUG] Row {row_idx}: Date header = '{current_date_str_from_header}'")
             continue
 
-        if 'sectiontableentry1' in row.get('class', []) or 'sectiontableentry2' in row.get('class', []):
+        if 'sectiontableentry1' in row_classes or 'sectiontableentry2' in row_classes:
             cells = row.find_all('td', recursive=False)
+            if debug_mode:
+                print(f"[DEBUG] Row {row_idx}: Match row with {len(cells)} cells")
             if len(cells) >= 10:
                 try:
                     # Nova verzija – pobere <span> iz .time-container
@@ -155,25 +177,28 @@ def _parse_matches_from_soup(soup_obj, round_name_for_match="N/A", round_url_sou
     return matches_found
 
 def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id_for_caching=None):
+    debug_mode = os.environ.get('SCRAPER_DEBUG', 'false').lower() == 'true'
+    
+    if debug_mode:
+        print(f"[DEBUG] Starting scrape for: {url_to_scrape}")
+        print(f"[DEBUG] Fetch all rounds: {fetch_all_rounds_data}")
+    
     page_matches = []
     all_match_data_for_leaderboard = [] if fetch_all_rounds_data else None
     available_rounds = []
     current_round_info = {'name': "N/A", 'url': url_to_scrape, 'id': None}
     
-    # Izboljšani headerji za simulacijo resnišnega brskalnika
+    # Izboljšani headerji za simulacijo resniškega brskalnika
+    # Uporabimo osnovnejše headerje, ki delujejo tudi na production serverjih
     headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'sl-SI,sl;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Encoding': 'gzip, deflate',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-        'DNT': '1'
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
     }
     session = requests.Session()
     session.headers.update(headers)
@@ -201,15 +226,20 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                 # Preverimo če smo dobili pravilno stran
                 if response.status_code == 200:
                     content_type = response.headers.get('content-type', '').lower()
+                    if debug_mode:
+                        print(f"[DEBUG] Response status: {response.status_code}, content-type: {content_type}, length: {len(response.content)}")
                     if 'text/html' in content_type:
                         soup = BeautifulSoup(response.content, 'html.parser')
+                        if debug_mode:
+                            print(f"[DEBUG] Successfully parsed HTML, title: {soup.title.string if soup.title else 'No title'}")
                         break
                     else:
-                        print(f"Unexpected content type: {content_type}")
+                        print(f"[ERROR] Unexpected content type: {content_type}")
                         if attempt == 2:
                             raise Exception(f"Invalid content type: {content_type}")
                         continue
                 else:
+                    print(f"[ERROR] HTTP {response.status_code}: {response.reason}")
                     response.raise_for_status()
                     
             except requests.exceptions.RequestException as e:
@@ -220,9 +250,15 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
         else:
             raise Exception("All retry attempts failed")
         available_rounds, current_round_info_from_page = extract_round_options_and_current(soup, url_to_scrape)
+        if debug_mode:
+            print(f"[DEBUG] Found {len(available_rounds)} rounds")
         if current_round_info_from_page['name'] != "N/A":
             current_round_info = current_round_info_from_page
+        if debug_mode:
+            print(f"[DEBUG] Current round info: {current_round_info}")
         page_matches = _parse_matches_from_soup(soup, current_round_info['name'], current_round_info['url'])
+        if debug_mode:
+            print(f"[DEBUG] Parsed {len(page_matches)} matches from main page")
 
         if fetch_all_rounds_data and available_rounds:
             all_match_data_for_leaderboard = []
@@ -280,7 +316,11 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
                     unique_match_identifiers.add(match_id_key)
     except Exception as e_fatal:
         print(f"Fatal error during scrape: {e_fatal}")
+        import traceback
+        traceback.print_exc()
 
+    if debug_mode:
+        print(f"[DEBUG] Returning: {len(page_matches)} page matches, {len(all_match_data_for_leaderboard) if all_match_data_for_leaderboard else 'None'} all matches")
     return page_matches, all_match_data_for_leaderboard, available_rounds, current_round_info
 
 if __name__ == '__main__':

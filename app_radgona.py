@@ -351,15 +351,27 @@ def show_leaderboard(league_id):
                         database.cache_matches(league_id, current_round_info['url'], scraped)
             # Parallel scrape all rounds for leaderboard
             try:
-                _, all_matches, _, _ = fetch_lmn_radgona_data(
-                    LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True, league_id_for_caching=league_id)
-                if all_matches:
-                    logger.info(f"Successfully scraped {len(all_matches)} matches for {league_id}")
+                # Try simpler approach first - just get current round
+                page_matches_test, _, rounds_test, current_round_test = fetch_lmn_radgona_data(
+                    LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=False, league_id_for_caching=league_id)
+                
+                if page_matches_test and rounds_test:
+                    logger.info(f"Successfully scraped {len(page_matches_test)} matches and {len(rounds_test)} rounds for {league_id}")
+                    # Now try to get all matches
+                    _, all_matches, _, _ = fetch_lmn_radgona_data(
+                        LEAGUES_CONFIG[league_id]['main_results_page_url'], fetch_all_rounds_data=True, league_id_for_caching=league_id)
+                    if all_matches:
+                        logger.info(f"Successfully scraped {len(all_matches)} total matches for {league_id}")
+                    else:
+                        logger.warning(f"Failed to scrape all matches for {league_id}, using cached data")
+                        all_matches = database.get_all_matches_for_league(league_id)
                 else:
-                    logger.warning(f"No matches scraped for {league_id}, using cached data")
+                    logger.warning(f"Failed to scrape basic data for {league_id}, using cached data")
                     all_matches = database.get_all_matches_for_league(league_id)
             except Exception as scrape_error:
                 logger.error(f"Scraping failed for {league_id}: {scrape_error}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 # Uporabi cached podatke kot fallback
                 all_matches = database.get_all_matches_for_league(league_id)
                 if not all_matches:
@@ -477,8 +489,16 @@ def test_scraper(league_id):
         url = LEAGUES_CONFIG[league_id]['main_results_page_url']
         start_time = datetime.now()
         
-        # Test single page scrape
-        page_matches, all_matches, rounds, current_round = fetch_lmn_radgona_data(url, fetch_all_rounds_data=True)
+        # Test single page scrape first (no fetch all rounds)
+        page_matches, _, rounds, current_round = fetch_lmn_radgona_data(url, fetch_all_rounds_data=False)
+        
+        # If single page works, try fetch all rounds
+        all_matches = None
+        if page_matches:
+            try:
+                _, all_matches, _, _ = fetch_lmn_radgona_data(url, fetch_all_rounds_data=True)
+            except Exception as e:
+                logger.error(f"Failed to fetch all rounds: {e}")
         
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
@@ -492,14 +512,70 @@ def test_scraper(league_id):
             'all_matches_count': len(all_matches) if all_matches else 0,
             'rounds_count': len(rounds) if rounds else 0,
             'current_round': current_round,
-            'sample_matches': (all_matches or page_matches)[:3] if (all_matches or page_matches) else []
+            'sample_matches': (page_matches or [])[:3]
         }
         
         return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
         
     except Exception as e:
         logger.error(f"Test scraper error for {league_id}: {str(e)}")
-        return f"<pre>Error testing scraper: {str(e)}</pre>", 500
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error testing scraper: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
+@app.route('/admin/test-url/<league_id>')
+def test_url_direct(league_id):
+    """Test direct URL access"""
+    if league_id not in LEAGUES_CONFIG:
+        return "Invalid league ID", 404
+    
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        url = LEAGUES_CONFIG[league_id]['main_results_page_url']
+        
+        # Test basic request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'sl-SI,sl;q=0.9,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        result = {
+            'url': url,
+            'status_code': response.status_code,
+            'content_type': response.headers.get('content-type', 'Unknown'),
+            'content_length': len(response.content),
+            'headers_sample': dict(list(response.headers.items())[:10])
+        }
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            result['title'] = soup.title.string if soup.title else 'No title'
+            
+            # Check for tables
+            tables = soup.find_all('table')
+            result['total_tables'] = len(tables)
+            
+            fixtures_table = soup.find('table', class_='fixtures-results')
+            result['has_fixtures_table'] = fixtures_table is not None
+            
+            if fixtures_table:
+                rows = fixtures_table.find_all('tr')
+                result['table_rows'] = len(rows)
+        
+        return f"<pre>{json.dumps(result, indent=2, default=str)}</pre>"
+        
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        return f"<pre>Error: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
 
 
 # Admin Routes
