@@ -51,8 +51,14 @@ cache = Cache(app, config=cache_config)
 # Flask config for sessions and admin
 app.secret_key = os.environ.get('SECRET_KEY', 'lmn-radgona-secret-key-2025')
 
-database.init_db_pool()
-database.init_db()
+# Initialize database with error handling
+try:
+    database.init_db_pool()
+    database.init_db()
+    logger.info("Database initialized successfully")
+except Exception as db_error:
+    logger.error(f"Database initialization failed: {db_error}")
+    # Continue without database for debugging routes
 
 # Admin permissions
 ADMIN_PERMISSIONS = {
@@ -223,6 +229,11 @@ def calculate_leaderboard(all_matches_for_league, league_id):
             if len(leaderboard) > 1:
                 leaderboard[1]['css_class'] = 'top-place'
     return leaderboard
+
+@app.route('/health')
+def health_check():
+    """Simple health check"""
+    return {'status': 'ok', 'timestamp': datetime.now().isoformat()}, 200
 
 @app.route('/')
 def index():
@@ -522,6 +533,26 @@ def test_scraper(league_id):
         import traceback
         tb = traceback.format_exc()
         return f"<pre>Error testing scraper: {str(e)}\n\nTraceback:\n{tb}</pre>", 500
+
+@app.route('/admin/env-check')
+def env_check():
+    """Check environment variables and system info"""
+    try:
+        import sys
+        import platform
+        env_info = {
+            'python_version': sys.version,
+            'platform': platform.platform(),
+            'has_database_url': bool(os.environ.get('DATABASE_URL')),
+            'has_secret_key': bool(os.environ.get('SECRET_KEY')),
+            'scraper_debug': os.environ.get('SCRAPER_DEBUG', 'false'),
+            'scraper_max_workers': os.environ.get('SCRAPER_MAX_WORKERS', '6'),
+            'flask_env': os.environ.get('FLASK_ENV', 'development'),
+            'port': os.environ.get('PORT', '5000')
+        }
+        return f"<pre>{json.dumps(env_info, indent=2)}</pre>"
+    except Exception as e:
+        return f"<pre>Error: {str(e)}</pre>", 500
 
 @app.route('/admin/test-url/<league_id>')
 def test_url_direct(league_id):
