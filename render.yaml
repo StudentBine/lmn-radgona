@@ -1,4 +1,5 @@
 services:
+  # Web service - Flask application
   - type: web
     name: lmn-radgona
     env: python
@@ -9,6 +10,19 @@ services:
       - key: FLASK_ENV
         value: production
       - key: SCRAPER_DEBUG
-        value: "true"
+        value: "false"
+      - key: SCRAPER_MAX_WORKERS
+        value: "2"
+
+  # Background Worker - Scraper scheduler
+  - type: worker
+    name: lmn-radgona-scraper
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python scraper_radgona.py --schedule"
+    envVars:
+      - key: SCRAPER_DEBUG
+        value: "false"
       - key: SCRAPER_MAX_WORKERS
         value: "2"

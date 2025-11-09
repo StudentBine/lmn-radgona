@@ -775,6 +775,79 @@ def get_match_by_unique_id(match_unique_id):
         """, (match_unique_id,))
         return cursor.fetchone()
 
+def get_match_details(match_unique_id, league_id):
+    """Get complete match details including goals and cards"""
+    with db_cursor() as cursor:
+        # First get the match
+        cursor.execute("""
+            SELECT * FROM matches WHERE match_unique_id = %s
+        """, (match_unique_id,))
+        match = cursor.fetchone()
+        
+        if not match:
+            return None
+        
+        # Get match_result if it exists
+        cursor.execute("""
+            SELECT * FROM match_results WHERE match_id = %s
+        """, (match_unique_id,))
+        match_result = cursor.fetchone()
+        
+        if not match_result:
+            # No detailed data yet
+            return {
+                'match': dict(match),
+                'goals': {'home': [], 'away': []},
+                'cards': {'home': [], 'away': []}
+            }
+        
+        # Get goals
+        cursor.execute("""
+            SELECT g.*, p.name as player_name, p.jersey_number, t.name as team_name,
+                   ap.name as assist_player_name
+            FROM goals g
+            JOIN players p ON g.player_id = p.id
+            JOIN teams t ON g.team_id = t.id
+            LEFT JOIN players ap ON g.assist_player_id = ap.id
+            WHERE g.match_result_id = %s
+            ORDER BY g.minute
+        """, (match_result['id'],))
+        all_goals = cursor.fetchall()
+        
+        # Get cards
+        cursor.execute("""
+            SELECT mc.*, p.name as player_name, p.jersey_number, t.name as team_name
+            FROM match_cards mc
+            JOIN players p ON mc.player_id = p.id
+            JOIN teams t ON mc.team_id = t.id
+            WHERE mc.match_result_id = %s
+            ORDER BY mc.minute
+        """, (match_result['id'],))
+        all_cards = cursor.fetchall()
+        
+        # Separate goals and cards by team
+        home_team = match['home_team']
+        away_team = match['away_team']
+        
+        home_goals = [dict(g) for g in all_goals if g['team_name'] == home_team]
+        away_goals = [dict(g) for g in all_goals if g['team_name'] == away_team]
+        
+        home_cards = [dict(c) for c in all_cards if c['team_name'] == home_team]
+        away_cards = [dict(c) for c in all_cards if c['team_name'] == away_team]
+        
+        return {
+            'match': dict(match),
+            'match_result': dict(match_result) if match_result else None,
+            'goals': {
+                'home': home_goals,
+                'away': away_goals
+            },
+            'cards': {
+                'home': home_cards,
+                'away': away_cards
+            }
+        }
+
 if __name__ == '__main__':
     init_db_pool()
     init_db()

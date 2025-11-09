@@ -4,19 +4,257 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Napaka - LMN Radgona</title>
+    <title>{% if error_code %}{{ error_code }} - {% endif %}Napaka - LMN Radgona</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='results_radgona.css') }}">
+    <style>
+        .error-container {
+            min-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .error-content {
+            background: white;
+            color: #333;
+            padding: 3rem 2rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 600px;
+            width: 100%;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .error-code {
+            font-size: 8rem;
+            font-weight: 900;
+            line-height: 1;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin: 0;
+            text-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .error-title {
+            font-size: 2rem;
+            margin: 1rem 0;
+            color: #333;
+            font-weight: 700;
+        }
+
+        .error-message {
+            font-size: 1.1rem;
+            color: #666;
+            margin: 1.5rem 0;
+            line-height: 1.6;
+        }
+
+        .error-icon {
+            font-size: 5rem;
+            margin-bottom: 1rem;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+                transform: translateY(0);
+            }
+
+            40% {
+                transform: translateY(-20px);
+            }
+
+            60% {
+                transform: translateY(-10px);
+            }
+        }
+
+        .error-actions {
+            margin-top: 2rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn-error {
+            padding: 0.8rem 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            display: inline-block;
+        }
+
+        .btn-error:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.6);
+        }
+
+        .error-help {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .error-help strong {
+            color: #333;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .error-code {
+                font-size: 5rem;
+            }
+
+            .error-title {
+                font-size: 1.5rem;
+            }
+
+            .error-content {
+                padding: 2rem 1.5rem;
+            }
+
+            .error-actions {
+                flex-direction: column;
+            }
+
+            .btn-error {
+                width: 100%;
+            }
+        }
+
+        /* Special styles for different error codes */
+        .error-404 .error-icon::before {
+            content: "🔍";
+        }
+
+        .error-403 .error-icon::before {
+            content: "🚫";
+        }
+
+        .error-500 .error-icon::before {
+            content: "⚠️";
+        }
+
+        .error-503 .error-icon::before {
+            content: "🔧";
+        }
+
+        .error-default .error-icon::before {
+            content: "❌";
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container">
-        <h1>Ups! Prišlo je do napake</h1>
-        <div class="error-box">
-            <h2>{{ error_message }}</h2>
-            <p>Koda napake: {{ error_code }}</p>
-            <p>Poskusite znova kasneje ali se obrnite na administratorja.</p>
+    <div class="error-container">
+        <div
+            class="error-content error-{{ error_code }} {% if not error_code or error_code not in [404, 403, 500, 503] %}error-default{% endif %}">
+            <div class="error-icon"></div>
+
+            {% if error_code %}
+            <h1 class="error-code">{{ error_code }}</h1>
+            {% endif %}
+
+            <h2 class="error-title">
+                {% if error_code == 404 %}
+                Stran ni bila najdena
+                {% elif error_code == 403 %}
+                Dostop zavrnjen
+                {% elif error_code == 500 %}
+                Napaka strežnika
+                {% elif error_code == 503 %}
+                Storitev ni na voljo
+                {% else %}
+                Ups! Prišlo je do napake
+                {% endif %}
+            </h2>
+
+            <p class="error-message">
+                {% if error_message %}
+                {{ error_message }}
+                {% elif error_code == 404 %}
+                Iskana stran ne obstaja. Morda je bila premaknjena ali izbrisana.
+                {% elif error_code == 403 %}
+                Nimate dovoljenja za dostop do te strani. Poskusite se prijaviti.
+                {% elif error_code == 500 %}
+                Prišlo je do napake na strežniku. Naša ekipa je bila obveščena in dela na odpravi težave.
+                {% elif error_code == 503 %}
+                Storitev trenutno ni na voljo. Poskusite znova čez nekaj trenutkov.
+                {% else %}
+                Nekaj je šlo narobe. Prosimo, poskusite ponovno kasneje.
+                {% endif %}
+            </p>
+
+            <div class="error-actions">
+                <a href="{{ url_for('home') }}" class="btn-error">
+                    🏠 Domača stran
+                </a>
+
+                {% if error_code == 404 %}
+                <a href="javascript:history.back()" class="btn-error btn-secondary">
+                    ← Nazaj
+                </a>
+                {% endif %}
+
+                {% if error_code in [500, 503] %}
+                <a href="javascript:location.reload()" class="btn-error btn-secondary">
+                    🔄 Osveži stran
+                </a>
+                {% endif %}
+            </div>
+
+            <div class="error-help">
+                <strong>Potrebujete pomoč?</strong><br>
+                {% if error_code == 404 %}
+                Poskusite uporabiti navigacijo ali se vrnite na domačo stran.
+                {% elif error_code in [500, 503] %}
+                Če težava vztraja, nas kontaktirajte na: <a href="mailto:info@lmn-radgona.si">info@lmn-radgona.si</a>
+                {% else %}
+                Če imate vprašanja, nas kontaktirajte ali se vrnite na domačo stran.
+                {% endif %}
+            </div>
         </div>
-        <a href="{{ url_for('home') }}" class="btn">Nazaj na domačo stran</a>
     </div>
 </body>
 

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, abort
 from flask_caching import Cache
 from flask_compress import Compress
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -525,6 +525,83 @@ def show_leaderboard(league_id):
 @app.route('/home')
 def home():
     return render_template('home.html')
+
+@app.route('/api/match-details/<league_id>/<path:match_unique_id>')
+def get_match_details_api(league_id, match_unique_id):
+    """API endpoint to get match details (goals and cards)"""
+    try:
+        if league_id not in LEAGUES_CONFIG:
+            return jsonify({'error': 'Invalid league ID'}), 404
+        
+        # Get match details from database
+        match_details = database.get_match_details(match_unique_id, league_id)
+        
+        if not match_details:
+            return jsonify({'error': 'Match not found'}), 404
+        
+        # Format the response
+        response = {
+            'match': {
+                'home_team': match_details['match']['home_team'],
+                'away_team': match_details['match']['away_team'],
+                'score': match_details['match']['score_str'],
+                'date': match_details['match']['date_str'],
+                'time': match_details['match']['time'],
+                'venue': match_details['match']['venue']
+            },
+            'goals': {
+                'home': [
+                    {
+                        'player': g['player_name'],
+                        'jersey_number': g.get('jersey_number'),
+                        'minute': g.get('minute'),
+                        'type': g.get('goal_type', 'regular'),
+                        'assist': g.get('assist_player_name')
+                    }
+                    for g in match_details['goals']['home']
+                ],
+                'away': [
+                    {
+                        'player': g['player_name'],
+                        'jersey_number': g.get('jersey_number'),
+                        'minute': g.get('minute'),
+                        'type': g.get('goal_type', 'regular'),
+                        'assist': g.get('assist_player_name')
+                    }
+                    for g in match_details['goals']['away']
+                ]
+            },
+            'cards': {
+                'home': [
+                    {
+                        'player': c['player_name'],
+                        'jersey_number': c.get('jersey_number'),
+                        'card_type': c['card_type'],
+                        'minute': c.get('minute'),
+                        'reason': c.get('reason')
+                    }
+                    for c in match_details['cards']['home']
+                ],
+                'away': [
+                    {
+                        'player': c['player_name'],
+                        'jersey_number': c.get('jersey_number'),
+                        'card_type': c['card_type'],
+                        'minute': c.get('minute'),
+                        'reason': c.get('reason')
+                    }
+                    for c in match_details['cards']['away']
+                ]
+            },
+            'has_details': len(match_details['goals']['home']) > 0 or len(match_details['goals']['away']) > 0 or 
+                          len(match_details['cards']['home']) > 0 or len(match_details['cards']['away']) > 0
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        logger.error(f"Error getting match details for {match_unique_id}: {str(e)}")
+        return jsonify({'error': 'Internal server error', 'message': str(e)}), 500
 
 @app.route('/admin/clear-cache/<league_id>')
 def clear_cache(league_id):
@@ -1404,6 +1481,134 @@ def admin_delete_card(card_id):
         flash('Napaka pri odstranjevanju kartona', 'error')
     
     return redirect(request.referrer or url_for('admin_match_results'))
+
+# ============================================================
+# ERROR HANDLERS
+# ============================================================
+
+# Test endpoints for error pages (only in development)
+@app.route('/test-error/<int:code>')
+def test_error(code):
+    """Test endpoint to preview error pages - Remove in production!"""
+    if os.environ.get('FLASK_ENV') == 'production':
+        abort(404)
+    
+    error_messages = {
+        400: 'Napačen zahtevek. Prosimo preverite vnesene podatke.',
+        403: 'Nimate dovoljenja za dostop do te strani.',
+        404: None,  # Will use default message from template
+        500: None,  # Will use default message from template
+        503: 'Storitev trenutno ni na voljo. Poskusite znova čez nekaj trenutkov.'
+    }
+    
+    return render_template('error.html',
+                         error_code=code,
+                         error_message=error_messages.get(code)), code
+
+@app.errorhandler(404)
+def page_not_found(e):
+    """Handle 404 - Page Not Found errors"""
+    logger.warning(f"404 error: {request.url}")
+    
+    # Check if it's an API request - only return JSON if explicitly requested
+    if request.path.startswith('/api/') or (request.accept_mimetypes.best == 'application/json'):
+        return jsonify({
+            'error': 'Not Found',
+            'message': 'The requested resource was not found',
+            'code': 404
+        }), 404
+    
+    return render_template('error.html', 
+                         error_code=404,
+                         error_message=None), 404
+
+@app.errorhandler(403)
+def forbidden(e):
+    """Handle 403 - Forbidden errors"""
+    logger.warning(f"403 error: {request.url}")
+    
+    if request.path.startswith('/api/') or (request.accept_mimetypes.best == 'application/json'):
+        return jsonify({
+            'error': 'Forbidden',
+            'message': 'You do not have permission to access this resource',
+            'code': 403
+        }), 403
+    
+    return render_template('error.html',
+                         error_code=403,
+                         error_message='Nimate dovoljenja za dostop do te strani.'), 403
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    """Handle 500 - Internal Server Error"""
+    logger.error(f"500 error: {request.url} - {str(e)}")
+    
+    if request.path.startswith('/api/') or (request.accept_mimetypes.best == 'application/json'):
+        return jsonify({
+            'error': 'Internal Server Error',
+            'message': 'An unexpected error occurred on the server',
+            'code': 500
+        }), 500
+    
+    return render_template('error.html',
+                         error_code=500,
+                         error_message=None), 500
+
+@app.errorhandler(503)
+def service_unavailable(e):
+    """Handle 503 - Service Unavailable"""
+    logger.error(f"503 error: {request.url}")
+    
+    if request.path.startswith('/api/') or (request.accept_mimetypes.best == 'application/json'):
+        return jsonify({
+            'error': 'Service Unavailable',
+            'message': 'The service is temporarily unavailable',
+            'code': 503
+        }), 503
+    
+    return render_template('error.html',
+                         error_code=503,
+                         error_message='Storitev trenutno ni na voljo. Poskusite znova čez nekaj trenutkov.'), 503
+
+@app.errorhandler(400)
+def bad_request(e):
+    """Handle 400 - Bad Request"""
+    logger.warning(f"400 error: {request.url} - {str(e)}")
+    
+    if request.path.startswith('/api/') or (request.accept_mimetypes.best == 'application/json'):
+        return jsonify({
+            'error': 'Bad Request',
+            'message': 'The request was invalid or cannot be processed',
+            'code': 400
+        }), 400
+    
+    return render_template('error.html',
+                         error_code=400,
+                         error_message='Napačen zahtevek. Prosimo preverite vnesene podatke.'), 400
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(e):
+    """Handle any unexpected errors"""
+    logger.error(f"Unexpected error: {request.url} - {str(e)}", exc_info=True)
+    
+    # Don't catch errors in debug mode
+    if app.debug:
+        raise e
+    
+    if request.path.startswith('/api/') or (request.accept_mimetypes.best == 'application/json'):
+        return jsonify({
+            'error': 'Internal Server Error',
+            'message': 'An unexpected error occurred',
+            'code': 500
+        }), 500
+    
+    return render_template('error.html',
+                         error_code=500,
+                         error_message='Prišlo je do nepričakovane napake. Poskusite ponovno.'), 500
+
+# ============================================================
+# APPLICATION STARTUP
+# ============================================================
 
 if __name__ == '__main__':
     database.init_db_pool()

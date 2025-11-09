@@ -7,6 +7,16 @@ import random
 from urllib.parse import urljoin
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import schedule
+import threading
+
+# Import database functions for saving scraped data
+try:
+    from database import cache_matches, init_db, init_db_pool
+    DATABASE_AVAILABLE = True
+except ImportError:
+    print("[WARNING] database.py not found - running without database support")
+    DATABASE_AVAILABLE = False
 
 BASE_URL = "https://www.lmn-radgona.si"
 
@@ -505,50 +515,171 @@ def fetch_lmn_radgona_data(url_to_scrape, fetch_all_rounds_data=False, league_id
         print(f"[DEBUG] Returning: {len(page_matches)} page matches, {len(all_match_data_for_leaderboard) if all_match_data_for_leaderboard else 'None'} all matches")
     return page_matches, all_match_data_for_leaderboard, available_rounds, current_round_info
 
+def scheduled_scrape_job():
+    """
+    Scrape job that runs on scheduled times (Saturday and Sunday at 23:00)
+    Fetches only the current round data for Liga A and Liga B and saves to database
+    """
+    print(f"\n{'='*60}")
+    print(f"[SCHEDULED SCRAPE] Starting at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}\n")
+    
+    # Define leagues to scrape
+    leagues = [
+        {
+            'id': 'liga_a',
+            'name': 'Liga A',
+            'url': 'https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a'
+        },
+        {
+            'id': 'liga_b',
+            'name': 'Liga B',
+            'url': 'https://www.lmn-radgona.si/index.php/2017-08-11-13-54-06/razpored-liga-b'
+        }
+    ]
+    
+    total_matches_scraped = 0
+    total_matches_saved = 0
+    
+    for league in leagues:
+        try:
+            print(f"\n{'─'*60}")
+            print(f"[{league['name']}] Starting scrape...")
+            print(f"{'─'*60}")
+            
+            # Fetch only current round (fetch_all_rounds_data=False)
+            page_matches, _, available_rounds, current_round_info = fetch_lmn_radgona_data(
+                league['url'], 
+                fetch_all_rounds_data=False
+            )
+            
+            total_matches_scraped += len(page_matches)
+            
+            print(f"\n[{league['name']}] ✓ Scraped {len(page_matches)} matches from: {current_round_info['name']}")
+            print(f"[{league['name']}] Available rounds: {len(available_rounds)}")
+            
+            # Display some match data
+            if page_matches:
+                print(f"\n[{league['name']}] Sample matches from {current_round_info['name']}:")
+                for i, match in enumerate(page_matches[:3]):
+                    print(f"  {i+1}. {match['home_team']} {match['score_str']} {match['away_team']} - {match['date_str']} {match['time']}")
+                if len(page_matches) > 3:
+                    print(f"  ... and {len(page_matches) - 3} more matches")
+            
+            # Save to database
+            if DATABASE_AVAILABLE and page_matches:
+                try:
+                    print(f"\n[{league['name']}] Saving {len(page_matches)} matches to database...")
+                    cache_matches(league['id'], current_round_info['url'], page_matches)
+                    total_matches_saved += len(page_matches)
+                    print(f"[{league['name']}] ✓ Successfully saved to database")
+                except Exception as db_error:
+                    print(f"[{league['name']}] DATABASE ERROR: {db_error}")
+                    import traceback
+                    traceback.print_exc()
+            elif not DATABASE_AVAILABLE:
+                print(f"\n[{league['name']}] Database not available - matches not saved")
+            
+            # Small delay between leagues to be respectful
+            if league != leagues[-1]:  # Don't delay after last league
+                delay = random.uniform(2, 4)
+                print(f"\n[INFO] Waiting {delay:.1f}s before next league...")
+                time.sleep(delay)
+                
+        except Exception as e:
+            print(f"\n[{league['name']}] ERROR: Failed to scrape - {e}")
+            import traceback
+            traceback.print_exc()
+    
+    print(f"\n{'='*60}")
+    print(f"[SCHEDULED SCRAPE] Completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"[SUMMARY] Total matches scraped: {total_matches_scraped}")
+    print(f"[SUMMARY] Total matches saved: {total_matches_saved}")
+    print(f"{'='*60}\n")
+
+
+def run_scheduler():
+    """
+    Runs the scheduler in a loop
+    Schedules scraping for Saturday and Sunday at 23:00
+    """
+    # Initialize database connection pool if available
+    if DATABASE_AVAILABLE:
+        try:
+            print("[DATABASE] Initializing database connection pool...")
+            init_db_pool()
+            init_db()
+            print("[DATABASE] ✓ Database initialized successfully")
+        except Exception as e:
+            print(f"[DATABASE ERROR] Failed to initialize database: {e}")
+            print("[WARNING] Continuing without database support")
+    
+    # Schedule for Saturday at 23:00
+    schedule.every().saturday.at("23:00").do(scheduled_scrape_job)
+    
+    # Schedule for Sunday at 23:00
+    schedule.every().sunday.at("23:00").do(scheduled_scrape_job)
+    
+    print("=" * 60)
+    print("SCRAPER SCHEDULER STARTED")
+    print("=" * 60)
+    print(f"Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Schedule: Every Saturday and Sunday at 23:00")
+    print(f"Target: Liga A + Liga B - Current round only")
+    print(f"Database: {'✓ Enabled' if DATABASE_AVAILABLE else '✗ Disabled'}")
+    print("=" * 60)
+    print("\nWaiting for scheduled times...")
+    print("(Press Ctrl+C to stop)\n")
+    
+    try:
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+    except KeyboardInterrupt:
+        print("\n\n[SCHEDULER] Stopped by user")
+
+
 if __name__ == '__main__':
-    # Test fetching only a specific round's page
-    print("--- TESTING SINGLE ROUND FETCH ---")
-    # test_round_21_url_A = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a/results/26-liga-a-2023-24/587/0/0/0/0"
-    # page_m, _, avail_r, curr_r_info = fetch_lmn_radgona_data(test_round_21_url_A, fetch_all_rounds_data=False)
-    # print(f"Page Matches ({curr_r_info['name']}): {len(page_m)}")
-    # for m in page_m[:2]: print(m)
-    # print(f"Available Rounds on page: {len(avail_r)}")
-
-    print("\n--- TESTING FETCH ALL ROUNDS FOR LEADERBOARD (LIGA A) ---")
-    liga_a_main_results_url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
-    _, all_matches_data, all_rounds_list, current_round = fetch_lmn_radgona_data(liga_a_main_results_url, fetch_all_rounds_data=True)
-
-    if all_matches_data:
-        print(f"\nTotal unique matches scraped for Liga A leaderboard: {len(all_matches_data)}")
-        # for m_idx, m in enumerate(all_matches_data):
-        #     if m_idx < 2 or m_idx > len(all_matches_data) - 3:
-        #         print(f"  {m['round_name']} ({m['round_url'].split('/')[-5]}): {m['date_str']} - {m['home_team']} {m['score_str']} {m['away_team']}")
-        #     elif m_idx == 2:
-        #         print("  ...")
-        
-        # Test score parsing on collected data
-        print("\nTesting score parsing on some collected matches:")
-        parsed_count = 0
-        for m in all_matches_data:
-            if parsed_count < 5 and m['score_str'] != "N/P":
-                hg, ag = parse_score(m['score_str'])
-                print(f"Original: '{m['score_str']}' -> Parsed: ({hg}, {ag})")
-                if hg is not None: parsed_count +=1
-            elif m['score_str'] == "N/P" and parsed_count < 5:
-                 hg, ag = parse_score(m['score_str'])
-                 print(f"Original: '{m['score_str']}' -> Parsed: ({hg}, {ag})")
-
-
+    import sys
+    
+    # Check if running in scheduler mode or test mode
+    if len(sys.argv) > 1 and sys.argv[1] == '--schedule':
+        # Production mode: run scheduler
+        run_scheduler()
+    elif len(sys.argv) > 1 and sys.argv[1] == '--test-now':
+        # Test mode: run scrape immediately with database
+        print("Running test scrape now...")
+        if DATABASE_AVAILABLE:
+            try:
+                print("[DATABASE] Initializing database...")
+                init_db_pool()
+                init_db()
+                print("[DATABASE] ✓ Database ready")
+            except Exception as e:
+                print(f"[DATABASE ERROR] {e}")
+                print("[WARNING] Continuing without database")
+        scheduled_scrape_job()
     else:
-        print("No matches collected for leaderboard calculation for Liga A.")
-
-    print(f"\nAvailable rounds found on Liga A main page: {len(all_rounds_list)}")
-    print(f"Current round info from Liga A main page: {current_round}")
-
-    # print("\n--- TESTING FETCH ALL ROUNDS FOR LEADERBOARD (LIGA B) ---")
-    # liga_b_main_results_url = "https://www.lmn-radgona.si/index.php/2017-08-11-13-54-06/razpored-liga-b"
-    # _, all_matches_data_b, _, _ = fetch_lmn_radgona_data(liga_b_main_results_url, fetch_all_rounds_data=True)
-    # if all_matches_data_b:
-    #     print(f"\nTotal unique matches scraped for Liga B leaderboard: {len(all_matches_data_b)}")
-    # else:
-    #     print("No matches collected for Liga B")
+        # Default: show usage information
+        print("=" * 60)
+        print("LMN Radgona Scraper")
+        print("=" * 60)
+        print("\nUsage:")
+        print("  python scraper_radgona.py --schedule    Start scheduler (runs Sat & Sun at 23:00)")
+        print("  python scraper_radgona.py --test-now    Run scrape immediately (for testing)")
+        print("\nScheduled times:")
+        print("  - Saturday at 23:00")
+        print("  - Sunday at 23:00")
+        print("  - Scrapes only current round of Liga A + Liga B")
+        print(f"  - Database: {'✓ Available' if DATABASE_AVAILABLE else '✗ Not available'}")
+        print("=" * 60)
+        
+        # Quick test example (without database)
+        print("\n--- QUICK TEST (fetching current round only, no database) ---")
+        liga_a_main_results_url = "https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a"
+        page_m, _, avail_r, curr_r_info = fetch_lmn_radgona_data(liga_a_main_results_url, fetch_all_rounds_data=False)
+        print(f"Current Round: {curr_r_info['name']}")
+        print(f"Matches found: {len(page_m)}")
+        print(f"Available rounds on page: {len(avail_r)}")
+        if page_m:
+            print(f"\nFirst match: {page_m[0]['home_team']} {page_m[0]['score_str']} {page_m[0]['away_team']}")

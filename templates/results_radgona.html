@@ -120,6 +120,7 @@
                 opacity: 1;
                 transform: translateY(0);
             }
+
         }
     </style>
 </head>
@@ -127,8 +128,7 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
         <div class="container">
-            <a class="navbar-brand"
-                href="{{ url_for('home') }}">
+            <a class="navbar-brand" href="{{ url_for('home') }}">
                 <i class="fas fa-futbol"></i> LMN Radgona
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavLeagues"
@@ -226,9 +226,14 @@
             {% if match.date_obj %}
             {% if match.date_obj == today_date %}
             {% set card_class = 'today-match' %}
-            {% elif match.date_obj < today_date %} {% set card_class='past-match' %} {% endif %} {% endif %} <div
+            {% elif match.date_obj < today_date %} {% set card_class='past-match' %} {% endif %} {% endif %} {% set
+                match_id=current_league_id ~ '_' ~ match.home_team ~ '_' ~ match.away_team ~ '_' ~
+                match.get('round_name', 'unknownround' ) ~ '_' ~ match.get('date_str', 'nodate' ) %} <div
                 class="col-12">
-                <div class="match-card {{ card_class }} animate__animated">
+                <div class="match-card {{ card_class }} animate__animated match-clickable"
+                    data-match-id="{{ match_id }}"
+                    >
+                    <!-- onclick="showMatchDetails('{{ current_league_id }}', '{{ match_id }}', this)" -->
                     <div class="row g-0 align-items-center">
                         <div class="col-md-2 match-time">
                             <div class="time-container">
@@ -254,9 +259,17 @@
                             <div class="venue-container">
                                 <i class="fas fa-map-marker-alt me-1"></i>
                                 <span class="venue-text">{{ match.venue }}</span>
+                                <i class="fas fa-chevron-down ms-2 toggle-icon"
+                                    style="font-size: 0.8rem; opacity: 0.6;"></i>
                             </div>
                         </div>
                     </div>
+                    <!-- Match details section (hidden by default) -->
+                    <!-- <div class="match-details-container" id="details-{{ match_id }}" style="display: none;">
+                        <div class="match-details-loading">
+                            <i class="fas fa-spinner fa-spin me-2"></i>Nalaganje podrobnosti...
+                        </div>
+                    </div> -->
                 </div>
         </div>
         {% endfor %}
@@ -276,7 +289,8 @@
             <p class="mb-2">Podatki pridobljeni iz: <a
                     href="{{ source_url_for_data.split('/index.php')[0] if source_url_for_data else 'https://www.lmn-radgona.si/' }}"
                     target="_blank" rel="noopener noreferrer" class="text-decoration-underline">LMN Radgona</a></p>
-            <p class="mb-0 text-muted">© <span id="current_year"></span> LMN Radgona Rezultati. Vse pravice pridržane.</p>
+            <p class="mb-0 text-muted">© <span id="current_year"></span> LMN Radgona Rezultati. Vse pravice pridržane.
+            </p>
         </div>
     </footer>
     </div>
@@ -286,6 +300,168 @@
         crossorigin="anonymous"></script>
     <script>
         document.getElementById('current_year').textContent = new Date().getFullYear();
+
+        // Track currently open match details
+        let currentlyOpenMatch = null;
+
+        // Function to show match details
+        async function showMatchDetails(leagueId, matchId, cardElement) {
+            const detailsContainer = document.getElementById(`details-${matchId}`);
+
+            // If clicking the same match, toggle it
+            if (currentlyOpenMatch === matchId) {
+                detailsContainer.style.display = 'none';
+                currentlyOpenMatch = null;
+                cardElement.classList.remove('match-card-expanded');
+                return;
+            }
+
+            // Close previously open match
+            if (currentlyOpenMatch) {
+                const prevContainer = document.getElementById(`details-${currentlyOpenMatch}`);
+                if (prevContainer) {
+                    prevContainer.style.display = 'none';
+                }
+                const prevCard = document.querySelector(`[data-match-id="${currentlyOpenMatch}"]`);
+                if (prevCard) {
+                    prevCard.classList.remove('match-card-expanded');
+                }
+            }
+
+            // Show loading state
+            detailsContainer.style.display = 'block';
+            detailsContainer.innerHTML = '<div class="match-details-loading"><i class="fas fa-spinner fa-spin me-2"></i>Nalaganje podrobnosti...</div>';
+            cardElement.classList.add('match-card-expanded');
+            currentlyOpenMatch = matchId;
+
+            try {
+                // Fetch match details from API
+                const response = await fetch(`/api/match-details/${leagueId}/${encodeURIComponent(matchId)}`);
+
+                if (!response.ok) {
+                    throw new Error('Failed to load match details');
+                }
+
+                const data = await response.json();
+
+                // Render match details
+                if (!data.has_details) {
+                    detailsContainer.innerHTML = `
+                        <div class="match-details-content">
+                            <div class="alert alert-info mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Za to tekmo še ni podrobnih podatkov o strelcih in kartonih.
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    detailsContainer.innerHTML = renderMatchDetails(data);
+                }
+
+            } catch (error) {
+                console.error('Error loading match details:', error);
+                detailsContainer.innerHTML = `
+                    <div class="match-details-content">
+                        <div class="alert alert-danger mb-0">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Napaka pri nalaganju podrobnosti tekme.
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Function to render match details HTML
+        function renderMatchDetails(data) {
+            let html = '<div class="match-details-content"><div class="row">';
+
+            // Home team column
+            html += '<div class="col-md-6 team-details home-team-details">';
+            html += `<h5 class="team-details-header"><i class="fas fa-home me-2"></i>${data.match.home_team}</h5>`;
+
+            // Home team goals
+            if (data.goals.home.length > 0) {
+                html += '<div class="goals-section mb-3">';
+                html += '<h6 class="section-title"><i class="fas fa-futbol me-2"></i>Strelci</h6>';
+                html += '<ul class="list-unstyled">';
+                data.goals.home.forEach(goal => {
+                    const jerseyNum = goal.jersey_number ? `#${goal.jersey_number}` : '';
+                    const minute = goal.minute ? `${goal.minute}'` : '';
+                    const assist = goal.assist ? `<span class="text-muted ms-2">(asis: ${goal.assist})</span>` : '';
+                    html += `<li class="goal-item">
+                        <i class="fas fa-soccer-ball me-2 text-success"></i>
+                        <strong>${goal.player}</strong> ${jerseyNum} ${minute ? `<span class="badge bg-primary ms-2">${minute}</span>` : ''} ${assist}
+                    </li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            // Home team cards
+            if (data.cards.home.length > 0) {
+                html += '<div class="cards-section">';
+                html += '<h6 class="section-title"><i class="fas fa-square me-2"></i>Kartoni</h6>';
+                html += '<ul class="list-unstyled">';
+                data.cards.home.forEach(card => {
+                    const jerseyNum = card.jersey_number ? `#${card.jersey_number}` : '';
+                    const minute = card.minute ? `${card.minute}'` : '';
+                    const cardColor = card.card_type === 'yellow' ? 'warning' : 'danger';
+                    const cardIcon = card.card_type === 'yellow' ? 'fa-square' : 'fa-square';
+                    html += `<li class="card-item">
+                        <i class="fas ${cardIcon} me-2 text-${cardColor}"></i>
+                        <strong>${card.player}</strong> ${jerseyNum} ${minute ? `<span class="badge bg-secondary ms-2">${minute}</span>` : ''}
+                        ${card.reason ? `<span class="text-muted ms-2">(${card.reason})</span>` : ''}
+                    </li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            html += '</div>'; // Close home team column
+
+            // Away team column
+            html += '<div class="col-md-6 team-details away-team-details">';
+            html += `<h5 class="team-details-header"><i class="fas fa-plane-departure me-2"></i>${data.match.away_team}</h5>`;
+
+            // Away team goals
+            if (data.goals.away.length > 0) {
+                html += '<div class="goals-section mb-3">';
+                html += '<h6 class="section-title"><i class="fas fa-futbol me-2"></i>Strelci</h6>';
+                html += '<ul class="list-unstyled">';
+                data.goals.away.forEach(goal => {
+                    const jerseyNum = goal.jersey_number ? `#${goal.jersey_number}` : '';
+                    const minute = goal.minute ? `${goal.minute}'` : '';
+                    const assist = goal.assist ? `<span class="text-muted ms-2">(asis: ${goal.assist})</span>` : '';
+                    html += `<li class="goal-item">
+                        <i class="fas fa-soccer-ball me-2 text-success"></i>
+                        <strong>${goal.player}</strong> ${jerseyNum} ${minute ? `<span class="badge bg-primary ms-2">${minute}</span>` : ''} ${assist}
+                    </li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            // Away team cards
+            if (data.cards.away.length > 0) {
+                html += '<div class="cards-section">';
+                html += '<h6 class="section-title"><i class="fas fa-square me-2"></i>Kartoni</h6>';
+                html += '<ul class="list-unstyled">';
+                data.cards.away.forEach(card => {
+                    const jerseyNum = card.jersey_number ? `#${card.jersey_number}` : '';
+                    const minute = card.minute ? `${card.minute}'` : '';
+                    const cardColor = card.card_type === 'yellow' ? 'warning' : 'danger';
+                    const cardIcon = card.card_type === 'yellow' ? 'fa-square' : 'fa-square';
+                    html += `<li class="card-item">
+                        <i class="fas ${cardIcon} me-2 text-${cardColor}"></i>
+                        <strong>${card.player}</strong> ${jerseyNum} ${minute ? `<span class="badge bg-secondary ms-2">${minute}</span>` : ''}
+                        ${card.reason ? `<span class="text-muted ms-2">(${card.reason})</span>` : ''}
+                    </li>`;
+                });
+                html += '</ul></div>';
+            }
+
+            html += '</div>'; // Close away team column
+            html += '</div></div>'; // Close row and content
+
+            return html;
+        }
 
         document.addEventListener('DOMContentLoaded', function () {
             // Animate cards on scroll
@@ -325,6 +501,125 @@
             }
         });
     </script>
+    <style>
+        /* Match details styling */
+        .match-card {
+            transition: all 0.3s ease;
+        }
+
+        .match-clickable {
+            cursor: pointer;
+        }
+
+        .match-clickable:hover .toggle-icon {
+            opacity: 1 !important;
+            transform: translateX(3px);
+        }
+
+        .match-card-expanded {
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        .match-card-expanded .toggle-icon {
+            transform: rotate(180deg);
+            opacity: 1 !important;
+        }
+
+        .toggle-icon {
+            transition: all 0.3s ease;
+        }
+
+        .match-details-container {
+            border-top: 2px solid rgba(58, 134, 255, 0.2);
+            background-color: rgba(248, 250, 252, 0.5);
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+            }
+
+            to {
+                opacity: 1;
+                max-height: 500px;
+            }
+        }
+
+        .match-details-loading {
+            padding: 2rem;
+            text-align: center;
+            color: var(--secondary-color);
+            font-weight: 500;
+        }
+
+        .match-details-content {
+            padding: 1.5rem;
+        }
+
+        .team-details {
+            padding: 1rem;
+        }
+
+        .home-team-details {
+            border-right: 2px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .team-details-header {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--secondary-color);
+        }
+
+        .section-title {
+            color: var(--text-color);
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .goal-item,
+        .card-item {
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            background-color: white;
+            border-radius: 6px;
+            border-left: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .goal-item {
+            border-left-color: var(--success-color);
+        }
+
+        .goal-item:hover,
+        .card-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-item {
+            border-left-color: #ffc107;
+        }
+
+        @media (max-width: 768px) {
+            .home-team-details {
+                border-right: none;
+                border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+                margin-bottom: 1rem;
+                padding-bottom: 1rem;
+            }
+
+            .toggle-icon {
+                display: none;
+            }
+        }
+    </style>
 </body>
 
 </html>
