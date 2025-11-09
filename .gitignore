@@ -10,3 +10,4 @@ instance/
 debug.html
 BUGFIX*
 *.sql
+*.md

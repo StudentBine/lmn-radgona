@@ -39,30 +39,27 @@ git push -u origin main
 4. Izberi repozitorij `lmn-radgona`
 
 #### C) Render bo samodejno prebral `render.yaml`
-Render bo ustvaril **2 servisa**:
+Render bo ustvaril **1 servis**:
 - ✅ **lmn-radgona** (Web Service) - Flask app
-- ✅ **lmn-radgona-scraper** (Background Worker) - Scheduler
+
+**Opomba:** Scraper se bo zaganjal preko zunanjega cron servisa (zastonj), ne pa z Render Background Workerjem (plačljivo $7/mesec). Glej `CRON_SETUP.md` za navodila.
 
 ### 3. Nastavi Environment Variables
 
-Za oba servisa nastavi:
+Za web servis nastavi:
 
 #### Web Service (`lmn-radgona`)
 ```
 DATABASE_URL=postgresql://user:password@host:port/database
 FLASK_SECRET_KEY=your-secret-key-here
+CRON_SECRET_KEY=your-cron-secret-key-here
 FLASK_ENV=production
 SCRAPER_DEBUG=false
 SCRAPER_MAX_WORKERS=2
 REDIS_URL=redis://... (optional)
 ```
 
-#### Background Worker (`lmn-radgona-scraper`)
-```
-DATABASE_URL=postgresql://user:password@host:port/database
-SCRAPER_DEBUG=false
-SCRAPER_MAX_WORKERS=2
-```
+**Pomembno:** `CRON_SECRET_KEY` je potreben za avtomatski scraping preko zunanjega cron servisa!
 
 #### Kako dodati spremenljivke:
 1. Render Dashboard → Izberi servis
@@ -84,7 +81,23 @@ SCRAPER_MAX_WORKERS=2
 - Uporabi Supabase, ElephantSQL, ali drugo PostgreSQL bazo
 - Kopiraj connection string v `DATABASE_URL`
 
-### 5. Testiranje Deployment-a
+### 5. Nastavi Avtomatski Scraping (POMEMBNO!)
+
+**Ne pozabi nastaviti zunanjega cron servisa!**
+
+Scraper se **ne bo avtomatsko zaganjal** brez tega koraka!
+
+👉 **Glej `CRON_SETUP.md` za podrobna navodila**
+
+Hitri koraki:
+1. Registriraj se na EasyCron.com (zastonj)
+2. Ustvari cron job za soboto 23:00
+3. Ustvari cron job za nedeljo 23:00
+4. URL: `https://lmn-radgona.onrender.com/cron/scrape-leagues?secret=<CRON_SECRET_KEY>`
+
+To bo avtomatsko scrapalo obe ligi vsako soboto in nedeljo!
+
+### 6. Testiranje Deployment-a
 
 Ko je deployment končan:
 
@@ -93,22 +106,15 @@ Ko je deployment končan:
 https://lmn-radgona.onrender.com
 ```
 
-#### Preveri Scraper Worker Logs:
-1. Render Dashboard → **lmn-radgona-scraper**
-2. **Logs** tab
-3. Pričakovan output:
+#### Testni Scrape (ročno):
+```bash
+curl "https://lmn-radgona.onrender.com/cron/scrape-leagues?secret=<CRON_SECRET_KEY>"
 ```
-============================================================
-SCRAPER SCHEDULER STARTED
-============================================================
-Current time: 2025-11-09 23:00:00
-Schedule: Every Saturday and Sunday at 23:00
-Target: Liga A + Liga B - Current round only
-Database: ✓ Enabled
-============================================================
 
-Waiting for scheduled times...
-```
+#### Preveri Logs:
+1. Render Dashboard → **lmn-radgona**
+2. **Logs** tab
+3. Išči "scrape" za scraping aktivnost
 
 ## 🔄 Avtomatski Re-deployment
 
@@ -212,15 +218,19 @@ schedule.every().saturday.at("22:00").do(scheduled_scrape_job)  # Za CET
 - ⚠️ 512MB RAM
 - ⚠️ Ni custom domain (brez plačila)
 
-### Background Worker (Free)
-- ✅ 750 ur/mesec
-- ✅ Vedno teče (brez sleep)
-- ⚠️ 512MB RAM
+### Externí Cron Service (EasyCron Free)
+- ✅ 1000 cron jobov/dan
+- ✅ Unlimited cron jobs
+- ✅ Email notifications
 
 ### PostgreSQL (Free)
 - ✅ 300MB storage
 - ⚠️ Po 90 dnevih brez aktivnosti se izbriše
 - ⚠️ 1 milijon vrstic limit
+
+**SKUPAJ: $0/mesec** 🎉
+
+*(Vs. Background Worker rešitev: $7/mesec)*
 
 ## 🔐 Varnost
 
@@ -290,12 +300,17 @@ Free → Starter ($7/mesec)
 - [ ] GitHub connected z Render
 - [ ] Blueprint deployan (`render.yaml`)
 - [ ] PostgreSQL baza ustvarjena
-- [ ] `DATABASE_URL` nastavljen za oba servisa
-- [ ] `FLASK_SECRET_KEY` nastavljen za web service
+- [ ] `DATABASE_URL` nastavljen za web service
+- [ ] `FLASK_SECRET_KEY` nastavljen
+- [ ] `CRON_SECRET_KEY` nastavljen (**POMEMBNO!**)
 - [ ] Web service deluje (odpri URL)
-- [ ] Scraper worker teče (preveri logs)
-- [ ] Testni scrape izveden (počakaj soboto/nedeljo ali `--test-now`)
+- [ ] **EasyCron račun ustvarjen** (**KRITIČNO!**)
+- [ ] **Cron job za soboto nastavljен** (**KRITIČNO!**)
+- [ ] **Cron job za nedeljo nastavljen** (**KRITIČNO!**)
+- [ ] Testni scrape izveden (ročno preko URL-ja)
 - [ ] Podatki v bazi (preveri tabelo `matches`)
+
+**⚠️ Brez nastavitve cron servisa scraper NE BO DELOVAL!**
 
 ## 🎉 Po Prvi Uspešni Deployment
 

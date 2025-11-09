@@ -1607,6 +1607,104 @@ def handle_unexpected_error(e):
                          error_message='Prišlo je do nepričakovane napake. Poskusite ponovno.'), 500
 
 # ============================================================
+# SCHEDULED SCRAPING ENDPOINT (for external cron services)
+# ============================================================
+
+@app.route('/cron/scrape-leagues', methods=['GET', 'POST'])
+def cron_scrape_leagues():
+    """
+    Endpoint za avtomatski scraping preko zunanjega cron servisa.
+    Lahko ga kličeš z EasyCron, cron-job.org, ali katerimkoli drugim cron servisom.
+    
+    Varnost: Preveri SECRET_KEY v Authorization header ali query parameter
+    """
+    # Security check - require secret key
+    secret_key = request.headers.get('Authorization') or request.args.get('secret')
+    expected_secret = os.environ.get('CRON_SECRET_KEY', os.environ.get('SECRET_KEY', 'change-me-in-production'))
+    
+    if secret_key != expected_secret:
+        logger.warning(f"Unauthorized scrape attempt from {request.remote_addr}")
+        return jsonify({'error': 'Unauthorized', 'message': 'Invalid secret key'}), 401
+    
+    logger.info(f"Starting scheduled scrape from {request.remote_addr}")
+    
+    # Import scraper function
+    from scraper_radgona import fetch_lmn_radgona_data, DATABASE_AVAILABLE, cache_matches
+    
+    if not DATABASE_AVAILABLE:
+        return jsonify({'error': 'Database not available'}), 503
+    
+    # Define leagues to scrape
+    leagues = [
+        {
+            'id': 'liga_a',
+            'name': 'Liga A',
+            'url': 'https://www.lmn-radgona.si/index.php/ct-menu-item-7/razpored-liga-a'
+        },
+        {
+            'id': 'liga_b',
+            'name': 'Liga B',
+            'url': 'https://www.lmn-radgona.si/index.php/2017-08-11-13-54-06/razpored-liga-b'
+        }
+    ]
+    
+    results = {
+        'timestamp': datetime.now().isoformat(),
+        'leagues': [],
+        'total_matches_scraped': 0,
+        'total_matches_saved': 0
+    }
+    
+    for league in leagues:
+        league_result = {
+            'id': league['id'],
+            'name': league['name'],
+            'status': 'pending',
+            'matches_scraped': 0,
+            'matches_saved': 0,
+            'current_round': None,
+            'error': None
+        }
+        
+        try:
+            logger.info(f"Scraping {league['name']}...")
+            
+            # Fetch only current round
+            page_matches, _, available_rounds, current_round_info = fetch_lmn_radgona_data(
+                league['url'], 
+                fetch_all_rounds_data=False
+            )
+            
+            league_result['matches_scraped'] = len(page_matches)
+            league_result['current_round'] = current_round_info.get('name', 'N/A')
+            results['total_matches_scraped'] += len(page_matches)
+            
+            # Save to database
+            if page_matches:
+                cache_matches(league['id'], current_round_info['url'], page_matches)
+                league_result['matches_saved'] = len(page_matches)
+                results['total_matches_saved'] += len(page_matches)
+                league_result['status'] = 'success'
+                logger.info(f"Successfully scraped and saved {len(page_matches)} matches for {league['name']}")
+            else:
+                league_result['status'] = 'success_no_matches'
+                logger.warning(f"No matches found for {league['name']}")
+                
+        except Exception as e:
+            league_result['status'] = 'error'
+            league_result['error'] = str(e)
+            logger.error(f"Error scraping {league['name']}: {e}")
+        
+        results['leagues'].append(league_result)
+    
+    # Determine overall status
+    results['status'] = 'success' if all(l['status'] in ['success', 'success_no_matches'] for l in results['leagues']) else 'partial_failure'
+    
+    logger.info(f"Scraping completed: {results['total_matches_scraped']} matches scraped, {results['total_matches_saved']} saved")
+    
+    return jsonify(results), 200
+
+# ============================================================
 # APPLICATION STARTUP
 # ============================================================
 

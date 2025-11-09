@@ -13,16 +13,5 @@ services:
         value: "false"
       - key: SCRAPER_MAX_WORKERS
         value: "2"
-
-  # Background Worker - Scraper scheduler
-  - type: worker
-    name: lmn-radgona-scraper
-    env: python
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python scraper_radgona.py --schedule"
-    envVars:
-      - key: SCRAPER_DEBUG
-        value: "false"
-      - key: SCRAPER_MAX_WORKERS
-        value: "2"
+      - key: CRON_SECRET_KEY
+        sync: false  # Set this in Render dashboard to a random secret value
